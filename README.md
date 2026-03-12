@@ -123,6 +123,9 @@ Make targets:
 - `make docker-build IMAGE=gravity-dca-bot:local` builds the container image.
 - `make docker-run CONFIG=config.toml IMAGE=gravity-dca-bot:local` runs the bot in Docker.
 - `make docker-once CONFIG=config.toml IMAGE=gravity-dca-bot:local` runs a single iteration in Docker.
+- `make docker-up CONFIG=config.toml IMAGE=gravity-dca-bot:local CONTAINER=gravity-dca` runs the container in the background.
+- `make docker-logs CONTAINER=gravity-dca` tails container logs.
+- `make docker-down CONTAINER=gravity-dca` stops and removes the background container.
 - `make test` runs the test suite inside `.venv`.
 - `make clean` removes `.venv` and `.pytest_cache`.
 
@@ -139,6 +142,20 @@ Run the bot in Docker:
 ```bash
 mkdir -p state
 make docker-run CONFIG=config.toml
+```
+
+Run the bot in the background and inspect logs with Docker:
+
+```bash
+mkdir -p state
+make docker-up CONFIG=config.toml
+make docker-logs
+```
+
+Stop the background container:
+
+```bash
+make docker-down
 ```
 
 Run one iteration in Docker:
