@@ -64,6 +64,12 @@ class DcaBot:
     def run_once(self) -> bool:
         state = load_state(self._config.dca.state_file)
         now = datetime.now(tz=UTC)
+        self._exchange.ensure_position_config(
+            symbol=self._config.dca.symbol,
+            leverage=self._config.dca.initial_leverage,
+            margin_type=self._config.dca.margin_type,
+            dry_run=self._config.runtime.dry_run,
+        )
         instrument = self._exchange.get_instrument(self._config.dca.symbol)
         snapshot = self._exchange.get_market_snapshot(self._config.dca.symbol)
 

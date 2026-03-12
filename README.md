@@ -5,6 +5,7 @@ Futures DCA bot for GRVT perpetual markets.
 ## What it does
 
 - Loads a GRVT market through `grvt-pysdk`
+- Can sync GRVT leverage and position `margin_type` from `config.toml` before trading
 - Opens an initial long or short perpetual position using a fixed quote budget
 - Adds safety orders when price moves against the position by configured percentages
 - Recalculates average entry after each additional fill
@@ -57,6 +58,8 @@ cp config.example.toml config.toml
 - `side`
 - `initial_quote_amount`
 - `safety_order_quote_amount`
+- `initial_leverage`
+- `margin_type`
 - `max_safety_orders`
 - `price_deviation_percent`
 - `take_profit_percent`
@@ -187,6 +190,9 @@ Exchange-specific lessons learned are in [SKILLS.md](/Users/gsantovena/Projects/
 
 - `environment` must match the credentials you are using. Production credentials require `environment = "prod"`.
 - `initial_quote_amount` and `safety_order_quote_amount` are quote-currency budgets, not base-asset sizes.
+- `initial_leverage` and `margin_type` are optional. When set, the bot compares current GRVT config and applies changes before trading if `dry_run = false`.
+- In `dry_run = true`, leverage and margin config differences are logged but not applied.
+- `margin_type` is intended for GRVT position config values such as `CROSS` or `ISOLATED`.
 - This implementation uses market orders for entries and exits.
 - Safety-order spacing is controlled by `price_deviation_percent` and `safety_order_step_scale`.
 - Safety-order size scaling is controlled by `safety_order_volume_scale`.
@@ -195,3 +201,4 @@ Exchange-specific lessons learned are in [SKILLS.md](/Users/gsantovena/Projects/
 - The bot tracks the DCA cycle locally; it does not reconstruct a cycle from exchange fill history if the state file is lost.
 - If you change `symbol`, inspect the new market first with `make instrument`.
 - Keep `dry_run = true` while changing environment, symbol, or sizing assumptions.
+- Do not change `margin_type` while a live position is open. The bot will refuse that change for the active symbol.

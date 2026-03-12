@@ -23,6 +23,8 @@ class DcaSettings:
     max_safety_orders: int
     price_deviation_percent: Decimal
     take_profit_percent: Decimal
+    initial_leverage: Decimal | None = None
+    margin_type: str | None = None
     safety_order_step_scale: Decimal = Decimal("1")
     safety_order_volume_scale: Decimal = Decimal("1")
     stop_loss_percent: Decimal | None = None
@@ -71,6 +73,12 @@ def load_config(path: str | Path) -> AppConfig:
             side=str(dca.get("side", "buy")).lower(),
             initial_quote_amount=Decimal(str(dca["initial_quote_amount"])),
             safety_order_quote_amount=Decimal(str(dca["safety_order_quote_amount"])),
+            initial_leverage=_optional_decimal(dca.get("initial_leverage")),
+            margin_type=(
+                str(dca["margin_type"]).strip()
+                if dca.get("margin_type") is not None
+                else None
+            ),
             max_safety_orders=int(dca["max_safety_orders"]),
             price_deviation_percent=Decimal(str(dca["price_deviation_percent"])),
             take_profit_percent=Decimal(str(dca["take_profit_percent"])),
