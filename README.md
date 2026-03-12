@@ -120,8 +120,53 @@ Make targets:
 - `make once CONFIG=config.toml` runs one DCA decision loop.
 - `make run CONFIG=config.toml` runs the polling bot.
 - `make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp` prints market constraints and live prices for a symbol.
+- `make docker-build IMAGE=gravity-dca-bot:local` builds the container image.
+- `make docker-run CONFIG=config.toml IMAGE=gravity-dca-bot:local` runs the bot in Docker.
+- `make docker-once CONFIG=config.toml IMAGE=gravity-dca-bot:local` runs a single iteration in Docker.
 - `make test` runs the test suite inside `.venv`.
 - `make clean` removes `.venv` and `.pytest_cache`.
+
+## Container
+
+Build the image:
+
+```bash
+make docker-build
+```
+
+Run the bot in Docker:
+
+```bash
+mkdir -p state
+make docker-run CONFIG=config.toml
+```
+
+Run one iteration in Docker:
+
+```bash
+mkdir -p state
+make docker-once CONFIG=config.toml
+```
+
+The image expects:
+- a config file mounted at `/app/config.toml`
+- a writable state directory mounted at `/state`
+
+When running in containers, set `state_file` in your config to an absolute path under `/state`, for example:
+
+```toml
+[dca]
+state_file = "/state/eth-bot.json"
+```
+
+You can also use Docker Compose:
+
+```bash
+mkdir -p state
+docker compose up --build
+```
+
+To run more than one bot at the same time, duplicate the service in [compose.yaml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/compose.yaml), mount a different config file for each service, and make sure each config uses a unique `state_file`.
 
 ## Instrument Checks
 

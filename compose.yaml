@@ -1,0 +1,10 @@
+services:
+  gravity-dca:
+    build: .
+    image: gravity-dca-bot:local
+    container_name: gravity-dca
+    restart: unless-stopped
+    command: ["--config", "/app/config.toml"]
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - ./state:/state
