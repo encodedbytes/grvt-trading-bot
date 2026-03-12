@@ -1,0 +1,24 @@
+[credentials]
+environment = "testnet"
+api_key = "replace-with-grvt-api-key"
+private_key = "replace-with-wallet-private-key"
+trading_account_id = "replace-with-sub-account-id"
+
+[dca]
+symbol = "BTC_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 5
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+safety_order_step_scale = "1.2"
+safety_order_volume_scale = "1.5"
+stop_loss_percent = "15.0"
+max_cycles = 20
+state_file = ".gravity-dca-state.json"
+
+[runtime]
+dry_run = true
+poll_seconds = 30
+log_level = "INFO"

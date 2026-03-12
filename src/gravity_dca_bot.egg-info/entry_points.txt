@@ -1,0 +1,2 @@
+[console_scripts]
+gravity-dca = gravity_dca.cli:main

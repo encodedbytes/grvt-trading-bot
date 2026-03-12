@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/gravity_dca/__init__.py
+src/gravity_dca/bot.py
+src/gravity_dca/cli.py
+src/gravity_dca/config.py
+src/gravity_dca/exchange.py
+src/gravity_dca/state.py
+src/gravity_dca/strategy.py
+src/gravity_dca_bot.egg-info/PKG-INFO
+src/gravity_dca_bot.egg-info/SOURCES.txt
+src/gravity_dca_bot.egg-info/dependency_links.txt
+src/gravity_dca_bot.egg-info/entry_points.txt
+src/gravity_dca_bot.egg-info/requires.txt
+src/gravity_dca_bot.egg-info/top_level.txt
+tests/test_strategy.py

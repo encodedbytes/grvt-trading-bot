@@ -1,0 +1,4 @@
+grvt-pysdk>=0.2.1
+
+[dev]
+pytest>=8.0.0

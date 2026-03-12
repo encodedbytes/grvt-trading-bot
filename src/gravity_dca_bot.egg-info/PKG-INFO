@@ -1,0 +1,126 @@
+Metadata-Version: 2.4
+Name: gravity-dca-bot
+Version: 0.1.0
+Summary: A configurable DCA bot for GRVT perpetual markets.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: grvt-pysdk>=0.2.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
+# GRVT DCA Bot
+
+Futures DCA bot for GRVT perpetual markets.
+
+## What it does
+
+- Loads a GRVT market through `grvt-pysdk`
+- Opens an initial long or short perpetual position using a fixed quote budget
+- Adds safety orders when price moves against the position by configured percentages
+- Recalculates average entry after each additional fill
+- Closes the full position when take profit is reached
+- Optionally closes the full position on stop loss
+- Persists the active cycle in a local state file
+- Supports `dry_run` mode for safe validation
+
+## Setup
+
+1. Create a local virtual environment:
+
+```bash
+python3 -m venv .venv
+```
+
+2. Activate it:
+
+```bash
+source .venv/bin/activate
+```
+
+3. Upgrade packaging tools and install the project:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+```
+
+Or use the repo targets:
+
+```bash
+make install
+```
+
+4. Create your runtime config from [config.example.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.example.toml):
+
+```bash
+cp config.example.toml config.toml
+```
+
+5. Edit `config.toml` and fill in:
+
+- `api_key`
+- `private_key`
+- `trading_account_id`
+- `symbol`
+- `side`
+- `initial_quote_amount`
+- `safety_order_quote_amount`
+- `max_safety_orders`
+- `price_deviation_percent`
+- `take_profit_percent`
+
+## Run
+
+Single iteration:
+
+```bash
+source .venv/bin/activate
+gravity-dca --config config.toml --once
+```
+
+Daemon mode:
+
+```bash
+source .venv/bin/activate
+gravity-dca --config config.toml
+```
+
+Run tests:
+
+```bash
+source .venv/bin/activate
+pytest
+```
+
+Or:
+
+```bash
+make test
+```
+
+Make targets:
+
+- `make install` creates `.venv` and installs the project with dev dependencies.
+- `make once CONFIG=config.toml` runs one DCA decision loop.
+- `make run CONFIG=config.toml` runs the polling bot.
+- `make test` runs the test suite inside `.venv`.
+
+## Strategy model
+
+- If there is no active cycle, the bot opens an initial market position.
+- If there is an active cycle and price reaches take profit, the bot sends a reduce-only market order to close it.
+- If stop loss is configured and price reaches it first, the bot closes the cycle.
+- If price moves against the position enough to hit the next safety-order trigger, the bot adds to the position.
+- After each additional entry, the bot updates average entry and computes the next trigger from that averaged price.
+
+## Notes
+
+- `environment` should usually be `testnet` until you confirm order sizing and credentials.
+- `initial_quote_amount` and `safety_order_quote_amount` are quote-currency budgets, not base-asset sizes.
+- This implementation uses market orders for entries and exits.
+- Safety-order spacing is controlled by `price_deviation_percent` and `safety_order_step_scale`.
+- Safety-order size scaling is controlled by `safety_order_volume_scale`.
+- Exit orders are submitted as `reduce_only` so they are intended to close, not expand, the position.
+- State is stored in `.gravity-dca-state.json` by default.
+- Keep `.venv` local to the repo so the CLI and dependency versions stay isolated from your system Python.
+- This bot tracks the DCA cycle locally; it does not reconstruct a cycle from exchange fill history if the state file is lost.
