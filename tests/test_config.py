@@ -39,4 +39,5 @@ dry_run = true
 def test_normalize_margin_type_supports_common_aliases() -> None:
     assert normalize_margin_type("cross") == "CROSS"
     assert normalize_margin_type("isolated") == "ISOLATED"
-    assert normalize_margin_type(" SIMPLE_CROSS_MARGIN ") == "SIMPLE_CROSS_MARGIN"
+    assert normalize_margin_type(" SIMPLE_CROSS_MARGIN ") == "CROSS"
+    assert normalize_margin_type("PORTFOLIO_CROSS_MARGIN") == "CROSS"

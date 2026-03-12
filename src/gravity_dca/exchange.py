@@ -28,6 +28,8 @@ CHAIN_ID_BY_ENV = {env.value: chain_id for env, chain_id in CHAIN_IDS.items()}
 MARGIN_TYPE_ALIASES = {
     "cross": "CROSS",
     "cross_margin": "CROSS",
+    "simple_cross_margin": "CROSS",
+    "portfolio_cross_margin": "CROSS",
     "isolated": "ISOLATED",
     "isolated_margin": "ISOLATED",
 }
@@ -190,15 +192,25 @@ class GrvtExchange:
         raw = position.get("leverage")
         return Decimal(str(raw)) if raw not in (None, "") else None
 
-    def get_initial_leverage(self, symbol: str) -> Decimal | None:
+    def get_initial_position_config(self, symbol: str) -> tuple[Decimal | None, str | None]:
         response = self._auth_and_post(
             self._trade_path("full/v1/get_all_initial_leverage"),
             {"sub_account_id": self._trading_account_id},
         )
         for item in response.get("results", response.get("result", {}).get("results", [])):
             if item.get("instrument") == symbol:
-                return Decimal(str(item["leverage"]))
-        return None
+                leverage = (
+                    Decimal(str(item["leverage"]))
+                    if item.get("leverage") not in (None, "")
+                    else None
+                )
+                margin_type = normalize_margin_type(item.get("margin_type"))
+                return leverage, margin_type
+        return None, None
+
+    def get_initial_leverage(self, symbol: str) -> Decimal | None:
+        leverage, _ = self.get_initial_position_config(symbol)
+        return leverage
 
     def set_initial_leverage(self, symbol: str, leverage: Decimal) -> None:
         response = self._auth_and_post(
@@ -294,16 +306,19 @@ class GrvtExchange:
             return
 
         current_position = self.get_position(symbol)
-        current_margin_type = normalize_margin_type(
-            (current_position or {}).get("margin_type")
-        ) or self.get_account_margin_type()
+        initial_leverage, initial_margin_type = self.get_initial_position_config(symbol)
+        current_margin_type = (
+            normalize_margin_type((current_position or {}).get("margin_type"))
+            or initial_margin_type
+            or self.get_account_margin_type()
+        )
         current_leverage = (
             Decimal(str(current_position["leverage"]))
             if current_position and current_position.get("leverage") not in (None, "")
             else None
         )
         if current_leverage is None:
-            current_leverage = self.get_initial_leverage(symbol)
+            current_leverage = initial_leverage
 
         if desired_margin_type is not None and current_margin_type == desired_margin_type:
             desired_margin_type = None
