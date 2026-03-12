@@ -212,6 +212,20 @@ class GrvtExchange:
         leverage, _ = self.get_initial_position_config(symbol)
         return leverage
 
+    def get_effective_position_config(self, symbol: str) -> tuple[Decimal | None, str | None]:
+        position = self.get_position(symbol)
+        if position is not None:
+            leverage = (
+                Decimal(str(position["leverage"]))
+                if position.get("leverage") not in (None, "")
+                else None
+            )
+            margin_type = normalize_margin_type(position.get("margin_type"))
+            if leverage is not None or margin_type is not None:
+                return leverage, margin_type
+        initial_leverage, initial_margin_type = self.get_initial_position_config(symbol)
+        return initial_leverage, initial_margin_type or self.get_account_margin_type()
+
     def set_initial_leverage(self, symbol: str, leverage: Decimal) -> None:
         response = self._auth_and_post(
             self._trade_path("full/v1/set_initial_leverage"),

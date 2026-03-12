@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 import logging
 import time
 
@@ -61,6 +62,11 @@ class DcaBot:
         )
         return order_id, report
 
+    def _current_cycle_position_config(
+        self, symbol: str
+    ) -> tuple[Decimal | None, str | None]:
+        return self._exchange.get_effective_position_config(symbol)
+
     def run_once(self) -> bool:
         state = load_state(self._config.dca.state_file)
         now = datetime.now(tz=UTC)
@@ -103,6 +109,7 @@ class DcaBot:
 
             order_id = self._require_order_id(plan, self._submit_order(plan))
             _, report = self._wait_for_fill(plan, order_id)
+            leverage, margin_type = self._current_cycle_position_config(plan.symbol)
             state.start_cycle(
                 symbol=plan.symbol,
                 side=plan.side,
@@ -111,6 +118,8 @@ class DcaBot:
                 price=report.avg_fill_price,
                 order_id=report.order_id,
                 client_order_id=plan.client_order_id,
+                leverage=leverage,
+                margin_type=margin_type,
             )
             save_state(self._config.dca.state_file, state)
             return True
@@ -185,11 +194,14 @@ class DcaBot:
                 return True
             order_id = self._require_order_id(plan, self._submit_order(plan))
             _, report = self._wait_for_fill(plan, order_id)
+            leverage, margin_type = self._current_cycle_position_config(plan.symbol)
             state.add_safety_fill(
                 quantity=report.traded_size,
                 price=report.avg_fill_price,
                 order_id=report.order_id,
                 client_order_id=plan.client_order_id,
+                leverage=leverage,
+                margin_type=margin_type,
             )
             save_state(self._config.dca.state_file, state)
             return True

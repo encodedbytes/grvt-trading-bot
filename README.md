@@ -177,6 +177,8 @@ State includes:
 - active cycle side and symbol
 - average entry
 - total quantity
+- leverage used for the cycle
+- margin type used for the cycle
 - completed safety orders
 - last client order id
 - last real GRVT order id

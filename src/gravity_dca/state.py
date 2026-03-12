@@ -18,6 +18,8 @@ class ActiveCycleState:
     total_quantity: Decimal
     total_cost: Decimal
     average_entry_price: Decimal
+    leverage: Decimal | None = None
+    margin_type: str | None = None
     completed_safety_orders: int = 0
     last_order_id: str | None = None
     last_client_order_id: str | None = None
@@ -32,6 +34,8 @@ class ClosedCycleState:
     exit_price: Decimal
     total_quantity: Decimal
     realized_pnl_estimate: Decimal
+    leverage: Decimal | None = None
+    margin_type: str | None = None
 
 
 @dataclass
@@ -50,6 +54,8 @@ class BotState:
         price: Decimal,
         order_id: str | None,
         client_order_id: str,
+        leverage: Decimal | None = None,
+        margin_type: str | None = None,
     ) -> None:
         total_cost = quantity * price
         self.active_cycle = ActiveCycleState(
@@ -59,6 +65,8 @@ class BotState:
             total_quantity=quantity,
             total_cost=total_cost,
             average_entry_price=price,
+            leverage=leverage,
+            margin_type=margin_type,
             completed_safety_orders=0,
             last_order_id=order_id,
             last_client_order_id=client_order_id,
@@ -71,6 +79,8 @@ class BotState:
         price: Decimal,
         order_id: str | None,
         client_order_id: str,
+        leverage: Decimal | None = None,
+        margin_type: str | None = None,
     ) -> None:
         if self.active_cycle is None:
             raise ValueError("No active cycle to update")
@@ -78,6 +88,10 @@ class BotState:
         cycle.total_quantity += quantity
         cycle.total_cost += quantity * price
         cycle.average_entry_price = cycle.total_cost / cycle.total_quantity
+        if leverage is not None:
+            cycle.leverage = leverage
+        if margin_type is not None:
+            cycle.margin_type = margin_type
         cycle.completed_safety_orders += 1
         cycle.last_order_id = order_id
         cycle.last_client_order_id = client_order_id
@@ -104,6 +118,8 @@ class BotState:
             exit_price=exit_price,
             total_quantity=cycle.total_quantity,
             realized_pnl_estimate=pnl,
+            leverage=cycle.leverage,
+            margin_type=cycle.margin_type,
         )
         self.completed_cycles += 1
         self.active_cycle = None
@@ -129,6 +145,10 @@ def _decode_active_cycle(payload: dict | None) -> ActiveCycleState | None:
         total_quantity=Decimal(str(payload["total_quantity"])),
         total_cost=Decimal(str(payload["total_cost"])),
         average_entry_price=Decimal(str(payload["average_entry_price"])),
+        leverage=(
+            Decimal(str(payload["leverage"])) if payload.get("leverage") is not None else None
+        ),
+        margin_type=str(payload["margin_type"]) if payload.get("margin_type") else None,
         completed_safety_orders=int(payload.get("completed_safety_orders", 0)),
         last_order_id=str(payload["last_order_id"]) if payload.get("last_order_id") else None,
         last_client_order_id=(
@@ -148,6 +168,10 @@ def _decode_closed_cycle(payload: dict | None) -> ClosedCycleState | None:
         exit_price=Decimal(str(payload["exit_price"])),
         total_quantity=Decimal(str(payload["total_quantity"])),
         realized_pnl_estimate=Decimal(str(payload["realized_pnl_estimate"])),
+        leverage=(
+            Decimal(str(payload["leverage"])) if payload.get("leverage") is not None else None
+        ),
+        margin_type=str(payload["margin_type"]) if payload.get("margin_type") else None,
     )
 
 
