@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
 import logging
 import time
 
 from .config import AppConfig
-from .exchange import GrvtExchange
+from .exchange import FillReport, GrvtExchange, PositionConfig
 from .state import BotState, load_state, save_state
 from .strategy import (
+    OrderPlan,
     build_entry_order_plan,
     build_exit_order_plan,
     current_quote_amount,
@@ -54,18 +54,119 @@ class DcaBot:
             )
         return order_id
 
-    def _wait_for_fill(self, plan, order_id: str) -> tuple[str, object]:
-        report = self._exchange.wait_for_fill(
+    def _wait_for_fill(self, plan: OrderPlan) -> FillReport:
+        return self._exchange.wait_for_fill(
             client_order_id=plan.client_order_id,
             timeout_seconds=self._config.runtime.order_fill_timeout_seconds,
             poll_seconds=self._config.runtime.order_fill_poll_seconds,
         )
-        return order_id, report
 
-    def _current_cycle_position_config(
-        self, symbol: str
-    ) -> tuple[Decimal | None, str | None]:
+    def _current_cycle_position_config(self, symbol: str) -> PositionConfig:
         return self._exchange.get_effective_position_config(symbol)
+
+    def _submit_and_fill(self, plan: OrderPlan) -> FillReport:
+        order_id = self._require_order_id(plan, self._submit_order(plan))
+        return self._wait_for_fill(plan)
+
+    def _persist_state(self, state: BotState) -> None:
+        save_state(self._config.dca.state_file, state)
+
+    def _handle_initial_entry(self, *, state: BotState, now, instrument, snapshot) -> bool:
+        if not should_start_new_cycle(state, self._config.dca):
+            self._logger.info(
+                "No active cycle and max_cycles reached. completed_cycles=%s",
+                state.completed_cycles,
+            )
+            return False
+
+        plan = build_entry_order_plan(
+            symbol=self._config.dca.symbol,
+            side=self._config.dca.side,
+            quote_amount=self._config.dca.initial_quote_amount,
+            instrument=instrument,
+            snapshot=snapshot,
+            exchange=self._exchange,
+            reason="initial-entry",
+        )
+        fill_price = entry_price(snapshot, self._config.dca.side)
+        self._logger.info(
+            "Prepared initial entry side=%s amount=%s fill_price=%s dry_run=%s",
+            plan.side,
+            plan.amount,
+            fill_price,
+            self._config.runtime.dry_run,
+        )
+        if self._config.runtime.dry_run:
+            return True
+
+        report = self._submit_and_fill(plan)
+        position_config = self._current_cycle_position_config(plan.symbol)
+        state.start_cycle(
+            symbol=plan.symbol,
+            side=plan.side,
+            when=now,
+            quantity=report.traded_size,
+            price=report.avg_fill_price,
+            order_id=report.order_id,
+            client_order_id=plan.client_order_id,
+            leverage=position_config.leverage,
+            margin_type=position_config.margin_type,
+        )
+        self._persist_state(state)
+        return True
+
+    def _handle_exit(self, *, state: BotState, cycle, snapshot, now, reason: str) -> bool:
+        plan = build_exit_order_plan(cycle=cycle, reason=reason)
+        close_price = exit_price(snapshot, cycle.side)
+        self._logger.info(
+            "%s hit. exit_side=%s amount=%s close_price=%s dry_run=%s",
+            "Take profit" if reason == "take-profit" else "Stop loss",
+            plan.side,
+            plan.amount,
+            close_price,
+            self._config.runtime.dry_run,
+        )
+        if self._config.runtime.dry_run:
+            return True
+        self._submit_and_fill(plan)
+        state.close_cycle(when=now, exit_reason=plan.reason, exit_price=close_price)
+        self._persist_state(state)
+        return True
+
+    def _handle_safety_order(self, *, state: BotState, cycle, instrument, snapshot) -> bool:
+        next_index = cycle.completed_safety_orders + 1
+        quote_amount = current_quote_amount(self._config.dca, next_index)
+        plan = build_entry_order_plan(
+            symbol=self._config.dca.symbol,
+            side=cycle.side,
+            quote_amount=quote_amount,
+            instrument=instrument,
+            snapshot=snapshot,
+            exchange=self._exchange,
+            reason=f"safety-order-{next_index}",
+        )
+        fill_price = entry_price(snapshot, cycle.side)
+        self._logger.info(
+            "Safety trigger hit. index=%s amount=%s fill_price=%s dry_run=%s",
+            next_index,
+            plan.amount,
+            fill_price,
+            self._config.runtime.dry_run,
+        )
+        if self._config.runtime.dry_run:
+            return True
+        report = self._submit_and_fill(plan)
+        position_config = self._current_cycle_position_config(plan.symbol)
+        state.add_safety_fill(
+            quantity=report.traded_size,
+            price=report.avg_fill_price,
+            order_id=report.order_id,
+            client_order_id=plan.client_order_id,
+            leverage=position_config.leverage,
+            margin_type=position_config.margin_type,
+        )
+        self._persist_state(state)
+        return True
 
     def run_once(self) -> bool:
         state = load_state(self._config.dca.state_file)
@@ -80,49 +181,12 @@ class DcaBot:
         snapshot = self._exchange.get_market_snapshot(self._config.dca.symbol)
 
         if state.active_cycle is None:
-            if not should_start_new_cycle(state, self._config.dca):
-                self._logger.info(
-                    "No active cycle and max_cycles reached. completed_cycles=%s",
-                    state.completed_cycles,
-                )
-                return False
-
-            plan = build_entry_order_plan(
-                symbol=self._config.dca.symbol,
-                side=self._config.dca.side,
-                quote_amount=self._config.dca.initial_quote_amount,
+            return self._handle_initial_entry(
+                state=state,
+                now=now,
                 instrument=instrument,
                 snapshot=snapshot,
-                exchange=self._exchange,
-                reason="initial-entry",
             )
-            fill_price = entry_price(snapshot, self._config.dca.side)
-            self._logger.info(
-                "Prepared initial entry side=%s amount=%s fill_price=%s dry_run=%s",
-                plan.side,
-                plan.amount,
-                fill_price,
-                self._config.runtime.dry_run,
-            )
-            if self._config.runtime.dry_run:
-                return True
-
-            order_id = self._require_order_id(plan, self._submit_order(plan))
-            _, report = self._wait_for_fill(plan, order_id)
-            leverage, margin_type = self._current_cycle_position_config(plan.symbol)
-            state.start_cycle(
-                symbol=plan.symbol,
-                side=plan.side,
-                when=now,
-                quantity=report.traded_size,
-                price=report.avg_fill_price,
-                order_id=report.order_id,
-                client_order_id=plan.client_order_id,
-                leverage=leverage,
-                margin_type=margin_type,
-            )
-            save_state(self._config.dca.state_file, state)
-            return True
 
         cycle = state.active_cycle
         self._logger.info(
@@ -135,76 +199,30 @@ class DcaBot:
         )
 
         if should_take_profit(cycle, snapshot, self._config.dca):
-            plan = build_exit_order_plan(cycle=cycle, reason="take-profit")
-            close_price = exit_price(snapshot, cycle.side)
-            self._logger.info(
-                "Take profit hit. exit_side=%s amount=%s close_price=%s dry_run=%s",
-                plan.side,
-                plan.amount,
-                close_price,
-                self._config.runtime.dry_run,
+            return self._handle_exit(
+                state=state,
+                cycle=cycle,
+                snapshot=snapshot,
+                now=now,
+                reason="take-profit",
             )
-            if self._config.runtime.dry_run:
-                return True
-            order_id = self._require_order_id(plan, self._submit_order(plan))
-            _, report = self._wait_for_fill(plan, order_id)
-            state.close_cycle(when=now, exit_reason=plan.reason, exit_price=close_price)
-            save_state(self._config.dca.state_file, state)
-            return True
 
         if should_stop_loss(cycle, snapshot, self._config.dca):
-            plan = build_exit_order_plan(cycle=cycle, reason="stop-loss")
-            close_price = exit_price(snapshot, cycle.side)
-            self._logger.info(
-                "Stop loss hit. exit_side=%s amount=%s close_price=%s dry_run=%s",
-                plan.side,
-                plan.amount,
-                close_price,
-                self._config.runtime.dry_run,
+            return self._handle_exit(
+                state=state,
+                cycle=cycle,
+                snapshot=snapshot,
+                now=now,
+                reason="stop-loss",
             )
-            if self._config.runtime.dry_run:
-                return True
-            order_id = self._require_order_id(plan, self._submit_order(plan))
-            _, report = self._wait_for_fill(plan, order_id)
-            state.close_cycle(when=now, exit_reason=plan.reason, exit_price=close_price)
-            save_state(self._config.dca.state_file, state)
-            return True
 
         if should_place_safety_order(cycle, snapshot, self._config.dca):
-            next_index = cycle.completed_safety_orders + 1
-            quote_amount = current_quote_amount(self._config.dca, next_index)
-            plan = build_entry_order_plan(
-                symbol=self._config.dca.symbol,
-                side=cycle.side,
-                quote_amount=quote_amount,
+            return self._handle_safety_order(
+                state=state,
+                cycle=cycle,
                 instrument=instrument,
                 snapshot=snapshot,
-                exchange=self._exchange,
-                reason=f"safety-order-{next_index}",
             )
-            fill_price = entry_price(snapshot, cycle.side)
-            self._logger.info(
-                "Safety trigger hit. index=%s amount=%s fill_price=%s dry_run=%s",
-                next_index,
-                plan.amount,
-                fill_price,
-                self._config.runtime.dry_run,
-            )
-            if self._config.runtime.dry_run:
-                return True
-            order_id = self._require_order_id(plan, self._submit_order(plan))
-            _, report = self._wait_for_fill(plan, order_id)
-            leverage, margin_type = self._current_cycle_position_config(plan.symbol)
-            state.add_safety_fill(
-                quantity=report.traded_size,
-                price=report.avg_fill_price,
-                order_id=report.order_id,
-                client_order_id=plan.client_order_id,
-                leverage=leverage,
-                margin_type=margin_type,
-            )
-            save_state(self._config.dca.state_file, state)
-            return True
 
         self._logger.info("No action taken this iteration.")
         return False

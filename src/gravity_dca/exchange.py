@@ -63,6 +63,12 @@ class FillReport:
     raw: dict
 
 
+@dataclass(frozen=True)
+class PositionConfig:
+    leverage: Decimal | None = None
+    margin_type: str | None = None
+
+
 def parse_grvt_decimal(value: str | int | float | Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0")
@@ -173,6 +179,17 @@ class GrvtExchange:
                 return position
         return None
 
+    def _position_config_from_payload(self, payload: dict | None) -> PositionConfig:
+        if payload is None:
+            return PositionConfig()
+        leverage = (
+            Decimal(str(payload["leverage"]))
+            if payload.get("leverage") not in (None, "")
+            else None
+        )
+        margin_type = normalize_margin_type(payload.get("margin_type"))
+        return PositionConfig(leverage=leverage, margin_type=margin_type)
+
     def get_position_size(self, symbol: str) -> Decimal:
         position = self.get_position(symbol)
         if position is None:
@@ -180,51 +197,32 @@ class GrvtExchange:
         return Decimal(str(position.get("size", "0")))
 
     def get_position_margin_type(self, symbol: str) -> str | None:
-        position = self.get_position(symbol)
-        if position is None:
-            return None
-        return normalize_margin_type(position.get("margin_type"))
+        return self._position_config_from_payload(self.get_position(symbol)).margin_type
 
     def get_position_leverage(self, symbol: str) -> Decimal | None:
-        position = self.get_position(symbol)
-        if position is None:
-            return None
-        raw = position.get("leverage")
-        return Decimal(str(raw)) if raw not in (None, "") else None
+        return self._position_config_from_payload(self.get_position(symbol)).leverage
 
-    def get_initial_position_config(self, symbol: str) -> tuple[Decimal | None, str | None]:
+    def get_initial_position_config(self, symbol: str) -> PositionConfig:
         response = self._auth_and_post(
             self._trade_path("full/v1/get_all_initial_leverage"),
             {"sub_account_id": self._trading_account_id},
         )
         for item in response.get("results", response.get("result", {}).get("results", [])):
             if item.get("instrument") == symbol:
-                leverage = (
-                    Decimal(str(item["leverage"]))
-                    if item.get("leverage") not in (None, "")
-                    else None
-                )
-                margin_type = normalize_margin_type(item.get("margin_type"))
-                return leverage, margin_type
-        return None, None
+                return self._position_config_from_payload(item)
+        return PositionConfig()
 
     def get_initial_leverage(self, symbol: str) -> Decimal | None:
-        leverage, _ = self.get_initial_position_config(symbol)
-        return leverage
+        return self.get_initial_position_config(symbol).leverage
 
-    def get_effective_position_config(self, symbol: str) -> tuple[Decimal | None, str | None]:
-        position = self.get_position(symbol)
-        if position is not None:
-            leverage = (
-                Decimal(str(position["leverage"]))
-                if position.get("leverage") not in (None, "")
-                else None
-            )
-            margin_type = normalize_margin_type(position.get("margin_type"))
-            if leverage is not None or margin_type is not None:
-                return leverage, margin_type
-        initial_leverage, initial_margin_type = self.get_initial_position_config(symbol)
-        return initial_leverage, initial_margin_type or self.get_account_margin_type()
+    def get_effective_position_config(self, symbol: str) -> PositionConfig:
+        position_config = self._position_config_from_payload(self.get_position(symbol))
+        if position_config.leverage is not None or position_config.margin_type is not None:
+            return position_config
+        initial_config = self.get_initial_position_config(symbol)
+        if initial_config.leverage is not None or initial_config.margin_type is not None:
+            return initial_config
+        return PositionConfig(margin_type=self.get_account_margin_type())
 
     def set_initial_leverage(self, symbol: str, leverage: Decimal) -> None:
         response = self._auth_and_post(
@@ -320,10 +318,10 @@ class GrvtExchange:
             return
 
         current_position = self.get_position(symbol)
-        initial_leverage, initial_margin_type = self.get_initial_position_config(symbol)
+        initial_config = self.get_initial_position_config(symbol)
         current_margin_type = (
             normalize_margin_type((current_position or {}).get("margin_type"))
-            or initial_margin_type
+            or initial_config.margin_type
             or self.get_account_margin_type()
         )
         current_leverage = (
@@ -332,7 +330,7 @@ class GrvtExchange:
             else None
         )
         if current_leverage is None:
-            current_leverage = initial_leverage
+            current_leverage = initial_config.leverage
 
         if desired_margin_type is not None and current_margin_type == desired_margin_type:
             desired_margin_type = None
