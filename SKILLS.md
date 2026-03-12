@@ -1,99 +1,160 @@
-# Gravity App Skills
+---
+name: grvt-futures-dca
+description: Build, review, debug, or operate Python trading bots for GRVT perpetual markets. Use when working on GRVT auth, market metadata, order sizing, leverage or margin configuration, fill confirmation, or local bot state for DCA-style futures strategies.
+---
 
-## What Was Learned
+# GRVT Futures DCA
 
-### 1. GRVT price fields are not consistently represented the way older SDK helpers imply
+Use this skill when the task involves a Python bot that trades GRVT perpetuals and needs exchange-specific handling rather than generic exchange logic.
 
-The live GRVT market-data responses used in this app returned decimal strings such as:
-- `best_ask_price = "2024.41"`
-- `best_bid_price = "36.019"`
+## Scope
 
-Older assumptions about 1e9-scaled integer price fields caused incorrect sizing.
+This skill is for:
+- GRVT market metadata and ticker handling
+- quote-to-size conversion for perpetual orders
+- leverage and `margin_type` configuration
+- market-order lifecycle and fill confirmation
+- local state persistence for DCA cycle bots
+- multi-bot operation with separate config and state files
 
-Practical rule:
-- Parse decimal strings directly.
-- Only apply 1e9 scaling fallback when the payload is clearly an integer-style encoded price.
+This skill is not for:
+- generic portfolio advice
+- strategy profitability claims
+- non-GRVT exchange integrations
 
-### 2. `min_notional` is necessary but insufficient
+## Workflow
 
-A quote budget can pass `min_notional` and still fail `min_size`.
+1. Read the local config and identify:
+   - `environment`
+   - `trading_account_id`
+   - `symbol`
+   - `state_file`
+   - `dry_run`
+   - `initial_leverage`
+   - `margin_type`
+2. Check the current GRVT instrument metadata before changing sizing.
+3. Treat order sizing as valid only if both `min_notional` and `min_size` pass after alignment.
+4. Treat create-order acknowledgment as provisional.
+5. Persist local cycle state only after a real fill is confirmed.
+6. If multiple bots are involved, require a unique `state_file` per bot.
 
-Examples observed live:
-- `ETH_USDT_Perp`: `min_notional = 20.0`, `min_size = 0.01`
-- `HYPE_USDT_Perp`: `min_notional = 5.0`, `min_size = 1.0`
+## GRVT Rules
 
-Practical rule:
-- Validate both:
-  - `quote_amount >= min_notional`
-  - aligned size `>= min_size`
+### Price parsing
 
-### 3. Size must be aligned to tradable market increments
+GRVT price fields may arrive as normal decimal strings.
 
-Rounding only to `base_decimals` was not enough.
+Use this rule:
+- If the value already contains a decimal point, parse it directly.
+- Only apply the legacy `1e9` scaling fallback when the payload is clearly integer-encoded.
 
-Observed failure from GRVT:
-- `Order size too granular`
+Do not assume old SDK comments match live payloads.
 
-Practical rule:
-- First round to `base_decimals`
-- Then snap down to a multiple of `min_size`
+### Instrument validation
 
-### 4. Submit acknowledgment is not a fill
+Before accepting a quote budget:
+- verify `quote_amount >= min_notional`
+- compute base size from live entry price
+- align size to market increments
+- verify aligned size `>= min_size`
 
-GRVT may accept the create-order request and return a response before the order is fully resolved.
+For this bot, alignment must happen in this order:
+1. round to `base_decimals`
+2. snap down to a multiple of `min_size`
 
-Observed behavior:
-- create-order returned an acknowledgment with placeholder `order_id = 0x00`
-- order lookup later returned the actual order id and fill state
+If you skip the second step, GRVT may reject the order as too granular.
 
-Practical rule:
-- Poll the order endpoint by `client_order_id`
-- Persist cycle state only after:
-  - `traded_size > 0`
-  - `avg_fill_price > 0`
+### Order model
 
-### 5. The real order id must come from follow-up order status
+For this project, entries and exits are market orders unless the user explicitly asks to change that.
 
-The create-order response can carry a temporary or placeholder id.
+Treat the submission lifecycle as:
+1. submit order
+2. capture `client_order_id`
+3. poll order status by `client_order_id`
+4. require non-zero `traded_size`
+5. require non-zero `avg_fill_price`
+6. store the final `order_id` from order lookup, not the placeholder submit ack id
 
-Practical rule:
-- Use the `order` lookup endpoint to capture the final real `order_id`
-- Store that id in local state, not the initial ack id
+### Leverage and margin type
 
-### 6. Testnet and production behavior can differ meaningfully
+Use GRVT instrument-level position config, not just sub-account summary, when comparing desired leverage or `margin_type`.
 
-Observed:
-- Production auth worked correctly with the provided credentials
-- Testnet auth failed because the credentials were not valid there
+Normalize cross-margin variants:
+- `CROSS`
+- `CROSS_MARGIN`
+- `SIMPLE_CROSS_MARGIN`
+- `PORTFOLIO_CROSS_MARGIN`
 
-Practical rule:
-- Confirm environment and credentials match before debugging code paths
-- Treat auth failures as possible environment mismatch first
+Treat them as the same effective cross-margin family unless the local code intentionally distinguishes them.
 
-### 7. The SDK is usable, but its abstractions are not enough by themselves
+If a live position exists for the symbol:
+- do not change `margin_type` automatically
+- changing leverage may still be possible, but validate current behavior against GRVT responses
 
-The app needed additional guardrails around the SDK:
-- explicit auth preflight for private requests
-- market-aware size alignment
-- order fill polling
-- defensive state persistence behavior
+### Environment handling
 
-Practical rule:
-- Wrap exchange SDKs with local validation and state rules
-- Do not trust exchange acks or client libraries to fully model the trading lifecycle
+Always verify the configured environment matches the credentials:
+- `prod`
+- `testnet`
+- `staging`
+- `dev`
 
-## Operational Heuristics
+If auth fails, check environment mismatch before assuming a code bug.
 
-- Use `make instrument CONFIG=config.toml SYMBOL=<symbol>` before changing symbols.
-- Keep `dry_run = true` until instrument constraints and live prices are verified.
-- If a live order is rejected, inspect `.gravity-dca-state.json` before rerunning.
-- If local state and exchange state differ, prefer exchange order lookup as source of truth.
+## Local State
 
-## Current Matured Capabilities
+The bot’s local state should capture the minimum data needed to resume a cycle safely:
+- `symbol`
+- `side`
+- `started_at`
+- `total_quantity`
+- `total_cost`
+- `average_entry_price`
+- `completed_safety_orders`
+- `last_order_id`
+- `last_client_order_id`
+- `leverage`
+- `margin_type`
 
-The app now knows how to:
-- inspect live GRVT instrument constraints
-- align order size to exchange requirements
-- submit signed GRVT market orders
-- confirm fills by polling GRVT order status
-- persist a DCA cycle from actual fill data instead of optimistic submit responses
+Closed-cycle history should carry forward:
+- realized PnL estimate
+- leverage used
+- margin type used
+
+Do not share one state file across multiple running bots.
+
+## Multi-Bot Guidance
+
+Safe pattern:
+- one config file per bot
+- one unique `state_file` per bot
+- preferably one symbol per bot
+
+Risky pattern:
+- multiple bots sharing the same symbol on the same sub-account
+- multiple bots sharing the same state file
+- cross-margin bots sharing a sub-account without explicit capital separation
+
+## Practical Checks
+
+Use these checks before live trading:
+- inspect instrument constraints first
+- keep `dry_run = true` while changing symbol, environment, leverage, or budgets
+- verify state file path is unique
+- verify local state is consistent with the actual exchange position
+
+## Known GRVT Behaviors
+
+- `min_notional` alone is not enough; `min_size` can still reject the trade.
+- ETH and HYPE can have very different `min_size` behavior even when `min_notional` looks small.
+- Production and testnet behavior can differ because credentials may only exist in one environment.
+- The SDK is useful, but local wrappers should still enforce auth checks, amount alignment, and fill confirmation.
+
+## Output Expectations
+
+When using this skill:
+- prefer concrete config and code changes over abstract advice
+- mention exchange constraints when recommending sizing changes
+- call out when a local state file can become inconsistent with exchange state
+- separate exchange-level truth from local bot-state assumptions
