@@ -6,6 +6,7 @@ from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, parse_grvt_deci
 from gravity_dca.state import ActiveCycleState, BotState
 from gravity_dca.strategy import (
     build_entry_order_plan,
+    build_exit_order_plan,
     current_deviation_percent,
     current_quote_amount,
     next_safety_trigger_price,
@@ -27,6 +28,9 @@ class StubExchange:
         rounded = self.round_amount(amount, instrument.base_decimals)
         return (rounded // instrument.min_size) * instrument.min_size
 
+    def round_price(self, price: Decimal, tick_size: Decimal) -> Decimal:
+        return (price // tick_size) * tick_size
+
 
 def settings() -> DcaSettings:
     return DcaSettings(
@@ -34,6 +38,8 @@ def settings() -> DcaSettings:
         side="buy",
         initial_quote_amount=Decimal("100"),
         safety_order_quote_amount=Decimal("150"),
+        order_type="market",
+        limit_price_offset_percent=Decimal("0"),
         max_safety_orders=3,
         price_deviation_percent=Decimal("2"),
         take_profit_percent=Decimal("1.5"),
@@ -124,6 +130,7 @@ def test_entry_order_sizes_from_quote_budget() -> None:
         last=Decimal("50001"),
     )
     plan = build_entry_order_plan(
+        settings=settings(),
         symbol="BTC_USDT_Perp",
         side="buy",
         quote_amount=Decimal("100"),
@@ -133,6 +140,8 @@ def test_entry_order_sizes_from_quote_budget() -> None:
         reason="initial-entry",
     )
     assert plan.amount == Decimal("0.002")
+    assert plan.order_type == "market"
+    assert plan.price is None
 
 
 def test_amount_aligns_to_exchange_min_size_step() -> None:
@@ -151,6 +160,7 @@ def test_amount_aligns_to_exchange_min_size_step() -> None:
         last=Decimal("2024.41"),
     )
     plan = build_entry_order_plan(
+        settings=settings(),
         symbol="ETH_USDT_Perp",
         side="buy",
         quote_amount=Decimal("25"),
@@ -160,6 +170,93 @@ def test_amount_aligns_to_exchange_min_size_step() -> None:
         reason="initial-entry",
     )
     assert plan.amount == Decimal("0.01")
+
+
+def test_limit_entry_order_uses_aggressive_limit_price() -> None:
+    instrument = InstrumentMeta(
+        symbol="ETH_USDT_Perp",
+        tick_size=Decimal("0.01"),
+        min_size=Decimal("0.01"),
+        min_notional=Decimal("20"),
+        base_decimals=9,
+    )
+    snapshot = MarketSnapshot(
+        symbol="ETH_USDT_Perp",
+        bid=Decimal("2024.40"),
+        ask=Decimal("2024.41"),
+        mid=Decimal("2024.405"),
+        last=Decimal("2024.41"),
+    )
+    limit_settings = DcaSettings(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        initial_quote_amount=Decimal("25"),
+        safety_order_quote_amount=Decimal("25"),
+        order_type="limit",
+        limit_price_offset_percent=Decimal("0.1"),
+        max_safety_orders=1,
+        price_deviation_percent=Decimal("2"),
+        take_profit_percent=Decimal("1.5"),
+    )
+    plan = build_entry_order_plan(
+        settings=limit_settings,
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        quote_amount=Decimal("25"),
+        instrument=instrument,
+        snapshot=snapshot,
+        exchange=StubExchange(),
+        reason="initial-entry",
+    )
+    assert plan.order_type == "limit"
+    assert plan.price == Decimal("2026.43")
+
+
+def test_limit_exit_order_uses_aggressive_limit_price() -> None:
+    instrument = InstrumentMeta(
+        symbol="ETH_USDT_Perp",
+        tick_size=Decimal("0.01"),
+        min_size=Decimal("0.01"),
+        min_notional=Decimal("20"),
+        base_decimals=9,
+    )
+    cycle = ActiveCycleState(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        started_at=datetime.now(tz=UTC).isoformat(),
+        total_quantity=Decimal("0.50"),
+        total_cost=Decimal("1000"),
+        average_entry_price=Decimal("2000"),
+    )
+    snapshot = MarketSnapshot(
+        symbol="ETH_USDT_Perp",
+        bid=Decimal("2050.00"),
+        ask=Decimal("2050.05"),
+        mid=Decimal("2050.025"),
+        last=Decimal("2050.03"),
+    )
+    limit_settings = DcaSettings(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        initial_quote_amount=Decimal("25"),
+        safety_order_quote_amount=Decimal("25"),
+        order_type="limit",
+        limit_price_offset_percent=Decimal("0.2"),
+        max_safety_orders=1,
+        price_deviation_percent=Decimal("2"),
+        take_profit_percent=Decimal("1.5"),
+    )
+    plan = build_exit_order_plan(
+        cycle=cycle,
+        settings=limit_settings,
+        instrument=instrument,
+        snapshot=snapshot,
+        exchange=StubExchange(),
+        reason="take-profit",
+    )
+    assert plan.order_type == "limit"
+    assert plan.side == "sell"
+    assert plan.price == Decimal("2045.90")
 
 
 def test_parse_grvt_decimal_supports_current_decimal_strings() -> None:

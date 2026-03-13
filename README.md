@@ -5,7 +5,7 @@ Python futures DCA bot for GRVT perpetual markets.
 ## Overview
 
 The bot:
-- opens an initial long or short market position
+- opens an initial long or short position
 - adds safety orders as price moves against the position
 - recalculates average entry after each fill
 - closes the full position at take profit or stop loss
@@ -13,7 +13,7 @@ The bot:
 - can sync GRVT leverage and `margin_type` before trading
 
 Important behavior:
-- entries and exits are market orders
+- entries and exits can use `market` or aggressive `limit` orders
 - take profit is price-based, not ROE-based
 - the bot trusts the local state file; it does not rebuild a cycle from exchange history if state is missing
 
@@ -35,6 +35,12 @@ Inspect the market before trading:
 
 ```bash
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
+```
+
+Inspect the current active cycle thresholds:
+
+```bash
+make thresholds CONFIG=config.toml
 ```
 
 Run one safe iteration:
@@ -68,6 +74,8 @@ The most important settings are:
 - `side`
 - `initial_quote_amount`
 - `safety_order_quote_amount`
+- `order_type`
+- `limit_price_offset_percent`
 - `initial_leverage`
 - `margin_type`
 - `take_profit_percent`
@@ -77,13 +85,15 @@ The most important settings are:
 
 Notes:
 - `initial_quote_amount` and `safety_order_quote_amount` are quote-currency budgets, not base size.
+- `order_type` can be `market` or `limit`.
+- `limit_price_offset_percent` is used only for `order_type = "limit"`.
 - `take_profit_percent` is based on price move from average entry, not leveraged ROE.
 - `initial_leverage` and `margin_type` are optional.
 - Production credentials require `environment = "prod"`.
 
 ## How It Trades
 
-If there is no active cycle in the state file, the bot opens an initial market position.
+If there is no active cycle in the state file, the bot opens an initial position.
 
 If a cycle is active, it checks on each polling iteration whether to:
 - sell the full position at take profit
@@ -96,6 +106,11 @@ For long positions:
 - exits use the bid side
 
 The bot only updates local state after GRVT confirms a real fill.
+
+For `order_type = "limit"`:
+- entry buys use an aggressive limit derived from the ask side
+- exit sells use an aggressive limit derived from the bid side
+- if the order is not filled within `runtime.limit_ttl_seconds`, the bot cancels it and leaves state unchanged
 
 ## State
 
@@ -165,6 +180,7 @@ Local:
 - `make once CONFIG=config.toml`
 - `make run CONFIG=config.toml`
 - `make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp`
+- `make thresholds CONFIG=config.toml`
 - `make test`
 
 Docker:
