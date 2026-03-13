@@ -1,96 +1,63 @@
-# Gravity Agent Notes
+# Session Continuity
 
-## Purpose
+Use this file only to resume work safely in a new session.
 
-This repository contains a Python DCA futures bot for GRVT perpetual markets.
+## What This Repo Is
 
-The bot currently supports:
-- Production and testnet GRVT environments through `grvt-pysdk`
-- Initial market entry for a long or short DCA cycle
-- Safety-order ladder entries when price moves against the position
-- Take-profit exits
-- Optional stop-loss exits
-- Local persistent cycle state in `.gravity-dca-state.json`
-- Instrument inspection from the CLI for exchange constraints and live prices
+Python GRVT futures DCA bot with:
+- initial entry
+- safety-order ladder
+- take-profit exit
+- optional stop-loss exit
+- local cycle state
+- Docker and local `.venv` workflows
 
-## Core Commands
+## Resume Checklist
 
-All commands should run through the repo virtual environment.
+Before making changes or running the bot again, check:
+- [config.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.toml)
+- current state file referenced by `dca.state_file`
+- whether a live container is running
+- whether the exchange already has an open position for the configured symbol
 
-Setup:
+## Current Operational Facts
+
+- The bot uses market orders for entries and exits.
+- Take profit is price-based, not ROE-based.
+- State is local-file driven; the bot does not reconstruct a cycle from exchange history if the state file is missing.
+- Each bot must use a unique `state_file`.
+- Multiple bots on the same symbol and sub-account are unsafe.
+- `margin_type` changes are blocked when a live position exists for that symbol.
+
+## Commands
+
+Local:
 ```bash
 make install
-```
-
-Run one bot iteration:
-```bash
+make test
 make once CONFIG=config.toml
-```
-
-Run continuously:
-```bash
 make run CONFIG=config.toml
-```
-
-Inspect a symbol:
-```bash
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
 ```
 
-Run tests:
+Docker:
 ```bash
-make test
+make docker-build
+make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth
+make docker-logs CONTAINER=grvt-dca-eth
+make docker-down CONTAINER=grvt-dca-eth
 ```
 
-## Current Architecture
+## Files That Matter Most
 
-Key files:
-- `src/gravity_dca/bot.py`: main runtime loop and state transitions
-- `src/gravity_dca/strategy.py`: DCA sizing, trigger, and exit logic
-- `src/gravity_dca/exchange.py`: GRVT API integration, auth checks, order polling, fill parsing
-- `src/gravity_dca/state.py`: persisted local bot state
-- `src/gravity_dca/config.py`: TOML config loading
-- `src/gravity_dca/cli.py`: CLI entrypoints
+- [config.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.toml)
+- [src/gravity_dca/bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
+- [src/gravity_dca/exchange.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/exchange.py)
+- [src/gravity_dca/strategy.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/strategy.py)
+- [src/gravity_dca/state.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/state.py)
 
-## Important Runtime Behavior
+## Safe Defaults
 
-- The bot only persists a new or updated cycle after GRVT confirms an actual fill.
-- Order submission alone is not enough to mutate cycle state.
-- The bot polls order status by `client_order_id` and records actual `traded_size`, `avg_fill_price`, and real `order_id`.
-- Size is aligned to market constraints before submission.
-
-## GRVT-Specific Constraints Learned
-
-- `min_notional` alone is not enough to validate an order.
-- `min_size` can still reject a quote budget that passes `min_notional`.
-- ETH on prod accepted `min_notional = 20.0`, `min_size = 0.01` during testing.
-- BTC on prod/testnet exposed much larger notional requirements.
-- HYPE on prod had `min_notional = 5.0` but `min_size = 1.0`, which made a `5 USDT` budget invalid.
-- GRVT can acknowledge a new order before final fill state is visible; polling is required.
-- Initial order create responses may show a placeholder order id like `0x00`, while the order lookup endpoint returns the actual order id.
-
-## Minimal Context Needed In A New Session
-
-If resuming later, the minimum information needed is:
-- Which environment is being used: `prod` or `testnet`
-- Which symbol is being traded
-- Whether `dry_run` is enabled
-- Current contents of `config.toml`
-- Current contents of `.gravity-dca-state.json`
-- Whether the last submitted order was already filled on GRVT
-
-## Current Known Good State
-
-During the last verified production test:
-- Environment: `prod`
-- Symbol: `ETH_USDT_Perp`
-- A live market buy order was accepted and later confirmed filled
-- Local state was updated to use the actual GRVT order id
-- Test suite status: `10 passed`
-
-## Safe Working Rules
-
-- Prefer `make instrument` before changing symbols or quote budgets.
-- Do not trust quote budget alone; always compare against both `min_notional` and `min_size`.
-- Keep `dry_run = true` when changing symbol, environment, or sizing assumptions.
-- Clear or inspect `.gravity-dca-state.json` before retesting entry logic if prior runs failed mid-flow.
+- Inspect instrument constraints before changing symbol or budget.
+- Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
+- If behavior looks wrong, compare exchange position data against the local state file before rerunning.
