@@ -6,6 +6,7 @@ import time
 
 from .config import AppConfig
 from .exchange import FillReport, GrvtExchange, PositionConfig
+from .recovery import reconcile_state
 from .state import BotState, load_state, save_state
 from .strategy import (
     OrderPlan,
@@ -77,6 +78,29 @@ class DcaBot:
 
     def _persist_state(self, state: BotState) -> None:
         save_state(self._config.dca.state_file, state)
+
+    def _reconcile_state_with_exchange(self, *, state: BotState, now: datetime) -> BotState:
+        decision = reconcile_state(
+            state=state,
+            symbol=self._config.dca.symbol,
+            exchange_position=self._exchange.get_open_position(self._config.dca.symbol),
+            when=now,
+        )
+        self._logger.info(decision.message)
+        if decision.action == "keep-local":
+            if decision.recovered_cycle is not None:
+                state.replace_active_cycle(decision.recovered_cycle)
+                self._persist_state(state)
+            return state
+        if decision.action == "rebuild-from-exchange":
+            state.replace_active_cycle(decision.recovered_cycle)
+            self._persist_state(state)
+            return state
+        if decision.action == "clear-stale-local":
+            state.replace_active_cycle(None)
+            self._persist_state(state)
+            return state
+        return state
 
     def _handle_initial_entry(self, *, state: BotState, now, instrument, snapshot) -> bool:
         if not should_start_new_cycle(state, self._config.dca):
@@ -203,6 +227,7 @@ class DcaBot:
     def run_once(self) -> bool:
         state = load_state(self._config.dca.state_file)
         now = datetime.now(tz=UTC)
+        state = self._reconcile_state_with_exchange(state=state, now=now)
         self._exchange.ensure_position_config(
             symbol=self._config.dca.symbol,
             leverage=self._config.dca.initial_leverage,

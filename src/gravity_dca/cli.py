@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import logging
 
 from .bot import DcaBot
 from .config import load_config
 from .exchange import GrvtExchange
+from .recovery import reconcile_state
 from .state import load_state
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
+
+
+UTC = timezone.utc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--thresholds",
         action="store_true",
         help="Print the current active cycle thresholds from the configured state file.",
+    )
+    parser.add_argument(
+        "--recovery-status",
+        action="store_true",
+        help="Compare local state against the live exchange position and print the recovery decision.",
     )
     return parser
 
@@ -72,6 +82,24 @@ def main() -> None:
         print(f"stop_loss_price={stop_price if stop_price is not None else ''}")
         next_trigger = next_safety_trigger_price(cycle, config.dca)
         print(f"next_safety_trigger_price={next_trigger if next_trigger is not None else ''}")
+        return
+
+    if args.recovery_status:
+        exchange = GrvtExchange(config.credentials, logging.getLogger("gravity_dca"))
+        state = load_state(config.dca.state_file)
+        exchange_position = exchange.get_open_position(config.dca.symbol)
+        decision = reconcile_state(
+            state=state,
+            symbol=config.dca.symbol,
+            exchange_position=exchange_position,
+            when=datetime.now(tz=UTC),
+        )
+        print(f"state_file={config.dca.state_file}")
+        print(f"symbol={config.dca.symbol}")
+        print(f"local_active_cycle={'true' if state.active_cycle is not None else 'false'}")
+        print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
+        print(f"decision={decision.action}")
+        print(f"message={decision.message}")
         return
 
     bot = DcaBot(config, logging.getLogger("gravity_dca"))

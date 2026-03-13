@@ -47,7 +47,6 @@ Not included in the first pass:
 - post-only / maker-only execution
 - automatic repricing for resting limit orders
 - partial-fill inventory handling
-- exchange-state reconstruction when the local state file is missing or stale
 
 ## Notes For Future Sessions
 

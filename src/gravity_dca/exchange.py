@@ -69,6 +69,17 @@ class PositionConfig:
     margin_type: str | None = None
 
 
+@dataclass(frozen=True)
+class PositionSnapshot:
+    symbol: str
+    side: str
+    size: Decimal
+    average_entry_price: Decimal
+    leverage: Decimal | None = None
+    margin_type: str | None = None
+    raw: dict | None = None
+
+
 def parse_grvt_decimal(value: str | int | float | Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0")
@@ -178,6 +189,34 @@ class GrvtExchange:
             if position.get("instrument") == symbol:
                 return position
         return None
+
+    def get_open_position(self, symbol: str) -> PositionSnapshot | None:
+        position = self.get_position(symbol)
+        if position is None:
+            return None
+        signed_size = Decimal(str(position.get("size", "0")))
+        if signed_size == 0:
+            return None
+        side_value = str(position.get("side", "")).strip().lower()
+        if side_value not in {"buy", "sell"}:
+            side_value = "buy" if signed_size > 0 else "sell"
+        average_entry_price = Decimal(
+            str(position.get("entry_price", position.get("average_entry_price", "0")))
+        )
+        if average_entry_price <= 0:
+            raise ValueError(
+                f"GRVT returned an open position without a valid entry price for {symbol}: {position}"
+            )
+        config = self._position_config_from_payload(position)
+        return PositionSnapshot(
+            symbol=symbol,
+            side=side_value,
+            size=abs(signed_size),
+            average_entry_price=average_entry_price,
+            leverage=config.leverage,
+            margin_type=config.margin_type,
+            raw=position,
+        )
 
     def _position_config_from_payload(self, payload: dict | None) -> PositionConfig:
         if payload is None:

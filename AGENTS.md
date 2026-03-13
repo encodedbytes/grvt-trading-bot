@@ -26,7 +26,7 @@ Before making changes or running the bot again, check:
 
 - The bot supports `market` and aggressive `limit` orders for entries and exits.
 - Take profit is price-based, not ROE-based.
-- State is local-file driven; the bot does not reconstruct a cycle from exchange history if the state file is missing.
+- On startup, the bot performs position-level exchange-backed recovery for the configured symbol.
 - Each bot must use a unique `state_file`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
@@ -41,6 +41,7 @@ make test
 make once CONFIG=config.toml
 make run CONFIG=config.toml
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
+make recovery-status CONFIG=config.toml
 ```
 
 Docker:
@@ -64,4 +65,5 @@ make docker-down CONTAINER=grvt-dca-eth
 - Inspect instrument constraints before changing symbol or budget.
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - If behavior looks wrong, compare exchange position data against the local state file before rerunning.
+- Recovery is position-level only. It restores active cycle size, side, average entry, leverage, and margin type, but does not reconstruct exact safety-order history.
 - Prefer doing new implementation work on a feature branch and only merge back after verification.
