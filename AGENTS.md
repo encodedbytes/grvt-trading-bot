@@ -20,15 +20,17 @@ Before making changes or running the bot again, check:
 - whether a live container is running
 - whether the exchange already has an open position for the configured symbol
 - [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md) if resuming limit-order work
+- whether current work should happen on a feature branch instead of `main`
 
 ## Current Operational Facts
 
-- The bot uses market orders for entries and exits.
+- The bot supports `market` and aggressive `limit` orders for entries and exits.
 - Take profit is price-based, not ROE-based.
 - State is local-file driven; the bot does not reconstruct a cycle from exchange history if the state file is missing.
 - Each bot must use a unique `state_file`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
+- Limit orders that do not fill within `runtime.limit_ttl_seconds` are canceled and do not mutate state.
 
 ## Commands
 
@@ -62,3 +64,4 @@ make docker-down CONTAINER=grvt-dca-eth
 - Inspect instrument constraints before changing symbol or budget.
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - If behavior looks wrong, compare exchange position data against the local state file before rerunning.
+- Prefer doing new implementation work on a feature branch and only merge back after verification.
