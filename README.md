@@ -15,7 +15,7 @@ The bot:
 Important behavior:
 - entries and exits can use `market` or aggressive `limit` orders
 - take profit is price-based, not ROE-based
-- the bot trusts the local state file; it does not rebuild a cycle from exchange history if state is missing
+- on startup, the bot can rebuild a missing active cycle from the live GRVT position for the configured symbol
 
 ## Quick Start
 
@@ -41,6 +41,12 @@ Inspect the current active cycle thresholds:
 
 ```bash
 make thresholds CONFIG=config.toml
+```
+
+Inspect how local state compares to the live exchange position:
+
+```bash
+make recovery-status CONFIG=config.toml
 ```
 
 Run one safe iteration:
@@ -127,7 +133,12 @@ State includes:
 
 Use a unique `state_file` per bot instance.
 
-If the state file is missing but the exchange still has an open position, the bot can open a new cycle by mistake because it does not reconstruct state from exchange history.
+On startup, the bot reconciles local state against the live GRVT position for the configured symbol:
+- if local state is missing and a live position exists, it rebuilds the active cycle from the exchange position
+- if local state exists but the exchange has no position, it clears the stale local active cycle
+- if both exist and materially disagree, it refuses to continue
+
+The current recovery is position-level, not full history reconstruction. It restores the active cycle from size, side, average entry, leverage, and margin type. It does not reconstruct exact safety-order count from exchange fills.
 
 ## Multi-Bot Use
 
@@ -181,6 +192,7 @@ Local:
 - `make run CONFIG=config.toml`
 - `make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp`
 - `make thresholds CONFIG=config.toml`
+- `make recovery-status CONFIG=config.toml`
 - `make test`
 
 Docker:

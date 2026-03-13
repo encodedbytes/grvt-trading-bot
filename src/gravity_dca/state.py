@@ -124,6 +124,9 @@ class BotState:
         self.completed_cycles += 1
         self.active_cycle = None
 
+    def replace_active_cycle(self, cycle: ActiveCycleState | None) -> None:
+        self.active_cycle = cycle
+
 
 def _encode_value(value: object) -> object:
     if isinstance(value, Decimal):
