@@ -23,6 +23,8 @@ class DcaSettings:
     max_safety_orders: int
     price_deviation_percent: Decimal
     take_profit_percent: Decimal
+    order_type: str = "market"
+    limit_price_offset_percent: Decimal = Decimal("0")
     initial_leverage: Decimal | None = None
     margin_type: str | None = None
     safety_order_step_scale: Decimal = Decimal("1")
@@ -38,6 +40,7 @@ class RuntimeSettings:
     poll_seconds: int = 30
     order_fill_timeout_seconds: int = 10
     order_fill_poll_seconds: int = 1
+    limit_ttl_seconds: int = 30
     log_level: str = "INFO"
 
 
@@ -52,6 +55,19 @@ def _optional_decimal(value: object) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
+    path = Path(str(raw_path))
+    if not path.is_absolute():
+        return path
+    if path.exists():
+        return path
+    if path.parts and path.parts[1:2] == ("state",):
+        config_dir = Path(config_path).resolve().parent
+        host_state_path = config_dir / "state" / Path(*path.parts[2:])
+        return host_state_path
+    return path
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -73,6 +89,10 @@ def load_config(path: str | Path) -> AppConfig:
             side=str(dca.get("side", "buy")).lower(),
             initial_quote_amount=Decimal(str(dca["initial_quote_amount"])),
             safety_order_quote_amount=Decimal(str(dca["safety_order_quote_amount"])),
+            order_type=str(dca.get("order_type", "market")).strip().lower(),
+            limit_price_offset_percent=Decimal(
+                str(dca.get("limit_price_offset_percent", "0"))
+            ),
             initial_leverage=_optional_decimal(dca.get("initial_leverage")),
             margin_type=(
                 str(dca["margin_type"]).strip()
@@ -86,13 +106,14 @@ def load_config(path: str | Path) -> AppConfig:
             safety_order_volume_scale=Decimal(str(dca.get("safety_order_volume_scale", "1"))),
             stop_loss_percent=_optional_decimal(dca.get("stop_loss_percent")),
             max_cycles=int(dca["max_cycles"]) if dca.get("max_cycles") is not None else None,
-            state_file=Path(str(dca.get("state_file", ".gravity-dca-state.json"))),
+            state_file=_resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), path),
         ),
         runtime=RuntimeSettings(
             dry_run=bool(runtime.get("dry_run", True)),
             poll_seconds=int(runtime.get("poll_seconds", 30)),
             order_fill_timeout_seconds=int(runtime.get("order_fill_timeout_seconds", 10)),
             order_fill_poll_seconds=int(runtime.get("order_fill_poll_seconds", 1)),
+            limit_ttl_seconds=int(runtime.get("limit_ttl_seconds", 30)),
             log_level=str(runtime.get("log_level", "INFO")).upper(),
         ),
     )

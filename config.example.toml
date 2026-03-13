@@ -9,6 +9,8 @@ symbol = "BTC_USDT_Perp"
 side = "buy"
 initial_quote_amount = "25"
 safety_order_quote_amount = "25"
+order_type = "market"
+limit_price_offset_percent = "0.1"
 initial_leverage = "3"
 margin_type = "CROSS"
 max_safety_orders = 5
@@ -23,4 +25,5 @@ state_file = ".gravity-dca-state.json"
 [runtime]
 dry_run = true
 poll_seconds = 30
+limit_ttl_seconds = 30
 log_level = "INFO"

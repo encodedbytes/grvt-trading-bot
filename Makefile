@@ -7,7 +7,7 @@ SYMBOL ?= BTC_USDT_Perp
 IMAGE ?= gravity-dca-bot:local
 CONTAINER ?= gravity-dca
 
-.PHONY: venv install test run once instrument docker-build docker-run docker-once docker-up docker-logs docker-down clean
+.PHONY: venv install test run once instrument thresholds docker-build docker-run docker-once docker-up docker-logs docker-down clean
 
 venv:
 	python3 -m venv .venv
@@ -27,6 +27,9 @@ once:
 
 instrument:
 	$(BOT) --config $(CONFIG) --instrument $(SYMBOL)
+
+thresholds:
+	$(BOT) --config $(CONFIG) --thresholds
 
 docker-build:
 	docker build -t $(IMAGE) .

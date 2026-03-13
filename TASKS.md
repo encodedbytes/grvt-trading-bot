@@ -32,7 +32,7 @@ Out of scope for the first pass:
 
 ### 1. Config Surface
 
-Status: pending
+Status: completed
 
 Tasks:
 - Add `order_type` to [config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/config.py) with allowed values `market` and `limit`.
@@ -49,7 +49,7 @@ Completion criteria:
 
 ### 2. Strategy and Execution Separation
 
-Status: pending
+Status: completed
 
 Tasks:
 - Refactor [strategy.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/strategy.py) so it returns an execution intent instead of a fully concrete market order.
@@ -66,7 +66,7 @@ Completion criteria:
 
 ### 3. Exchange Limit Order Path
 
-Status: pending
+Status: completed
 
 Tasks:
 - Extend [exchange.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/exchange.py) to place `limit` orders with:
@@ -83,7 +83,7 @@ Completion criteria:
 
 ### 4. Limit Pricing Rules
 
-Status: pending
+Status: completed
 
 Tasks:
 - Define deterministic aggressive limit pricing rules:
@@ -99,7 +99,7 @@ Completion criteria:
 
 ### 5. Fill Waiting and Timeout Policy
 
-Status: pending
+Status: completed
 
 Tasks:
 - Extend [bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py) execution flow to support limit orders that may remain open.
@@ -115,7 +115,7 @@ Completion criteria:
 
 ### 6. State Safety
 
-Status: pending
+Status: completed
 
 Tasks:
 - Preserve the existing rule that local cycle state changes only after a confirmed fill.
@@ -131,7 +131,7 @@ Completion criteria:
 
 ### 7. Tests
 
-Status: pending
+Status: completed
 
 Tasks:
 - Add config parsing tests for `order_type` and limit settings.
@@ -149,7 +149,7 @@ Completion criteria:
 
 ### 8. Documentation
 
-Status: pending
+Status: completed
 
 Tasks:
 - Update [README.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/README.md) with:
@@ -187,3 +187,7 @@ Completion criteria:
 - State is local and trusted; it is not rebuilt from exchange history.
 - Fill-confirmed persistence is already implemented and must not be weakened.
 - Any limit-order implementation should preserve the same safety guarantee before expanding features.
+- First-pass limit-order support is now implemented.
+- Limit orders use aggressive prices derived from live bid/ask plus `limit_price_offset_percent`.
+- If a limit order is not filled within `runtime.limit_ttl_seconds`, the bot cancels it and leaves local state unchanged.
+- Advanced repricing, post-only, and partial-fill handling are still out of scope.

@@ -403,6 +403,17 @@ class GrvtExchange:
         self._logger.info("order_response=%s", response)
         return response
 
+    def cancel_order(
+        self,
+        *,
+        symbol: str,
+        order_id: str | None = None,
+        client_order_id: str | None = None,
+    ) -> bool:
+        self.ensure_private_auth()
+        params = {"client_order_id": client_order_id} if client_order_id is not None else {}
+        return self._client.cancel_order(id=order_id, symbol=symbol, params=params)
+
     def fetch_order(self, *, order_id: str | None = None, client_order_id: str | None = None) -> dict:
         if order_id is None and client_order_id is None:
             raise ValueError("fetch_order requires order_id or client_order_id")
@@ -430,10 +441,12 @@ class GrvtExchange:
     def wait_for_fill(
         self,
         *,
+        symbol: str,
+        order_type: str,
         client_order_id: str,
         timeout_seconds: int,
         poll_seconds: int,
-    ) -> FillReport:
+    ) -> FillReport | None:
         deadline = time.time() + timeout_seconds
         last_report: FillReport | None = None
         while time.time() < deadline:
@@ -453,6 +466,18 @@ class GrvtExchange:
                         f"GRVT order was not fillable: status={report.status} reject_reason={reject_reason}"
                     )
             time.sleep(poll_seconds)
+        if order_type == "limit":
+            self._logger.warning(
+                "Limit order timed out waiting for fill. client_order_id=%s last_status=%s",
+                client_order_id,
+                last_report.status if last_report is not None else "UNKNOWN",
+            )
+            self.cancel_order(
+                symbol=symbol,
+                order_id=(last_report.order_id if last_report is not None and last_report.order_id else None),
+                client_order_id=client_order_id,
+            )
+            return None
         if last_report is not None:
             raise ValueError(
                 f"Timed out waiting for fill: status={last_report.status} "

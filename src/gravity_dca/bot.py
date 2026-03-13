@@ -54,18 +54,25 @@ class DcaBot:
             )
         return order_id
 
-    def _wait_for_fill(self, plan: OrderPlan) -> FillReport:
+    def _wait_for_fill(self, plan: OrderPlan) -> FillReport | None:
+        timeout_seconds = (
+            self._config.runtime.limit_ttl_seconds
+            if plan.order_type == "limit"
+            else self._config.runtime.order_fill_timeout_seconds
+        )
         return self._exchange.wait_for_fill(
+            symbol=plan.symbol,
+            order_type=plan.order_type,
             client_order_id=plan.client_order_id,
-            timeout_seconds=self._config.runtime.order_fill_timeout_seconds,
+            timeout_seconds=timeout_seconds,
             poll_seconds=self._config.runtime.order_fill_poll_seconds,
         )
 
     def _current_cycle_position_config(self, symbol: str) -> PositionConfig:
         return self._exchange.get_effective_position_config(symbol)
 
-    def _submit_and_fill(self, plan: OrderPlan) -> FillReport:
-        order_id = self._require_order_id(plan, self._submit_order(plan))
+    def _submit_and_fill(self, plan: OrderPlan) -> FillReport | None:
+        self._require_order_id(plan, self._submit_order(plan))
         return self._wait_for_fill(plan)
 
     def _persist_state(self, state: BotState) -> None:
@@ -80,6 +87,7 @@ class DcaBot:
             return False
 
         plan = build_entry_order_plan(
+            settings=self._config.dca,
             symbol=self._config.dca.symbol,
             side=self._config.dca.side,
             quote_amount=self._config.dca.initial_quote_amount,
@@ -90,9 +98,11 @@ class DcaBot:
         )
         fill_price = entry_price(snapshot, self._config.dca.side)
         self._logger.info(
-            "Prepared initial entry side=%s amount=%s fill_price=%s dry_run=%s",
+            "Prepared initial entry side=%s order_type=%s amount=%s price=%s fill_price=%s dry_run=%s",
             plan.side,
+            plan.order_type,
             plan.amount,
+            plan.price,
             fill_price,
             self._config.runtime.dry_run,
         )
@@ -100,6 +110,9 @@ class DcaBot:
             return True
 
         report = self._submit_and_fill(plan)
+        if report is None:
+            self._logger.info("Initial entry limit order was not filled before timeout.")
+            return False
         position_config = self._current_cycle_position_config(plan.symbol)
         state.start_cycle(
             symbol=plan.symbol,
@@ -116,19 +129,32 @@ class DcaBot:
         return True
 
     def _handle_exit(self, *, state: BotState, cycle, snapshot, now, reason: str) -> bool:
-        plan = build_exit_order_plan(cycle=cycle, reason=reason)
+        instrument = self._exchange.get_instrument(cycle.symbol)
+        plan = build_exit_order_plan(
+            cycle=cycle,
+            settings=self._config.dca,
+            instrument=instrument,
+            snapshot=snapshot,
+            exchange=self._exchange,
+            reason=reason,
+        )
         close_price = exit_price(snapshot, cycle.side)
         self._logger.info(
-            "%s hit. exit_side=%s amount=%s close_price=%s dry_run=%s",
+            "%s hit. exit_side=%s order_type=%s amount=%s price=%s close_price=%s dry_run=%s",
             "Take profit" if reason == "take-profit" else "Stop loss",
             plan.side,
+            plan.order_type,
             plan.amount,
+            plan.price,
             close_price,
             self._config.runtime.dry_run,
         )
         if self._config.runtime.dry_run:
             return True
-        self._submit_and_fill(plan)
+        report = self._submit_and_fill(plan)
+        if report is None:
+            self._logger.info("%s limit order was not filled before timeout.", reason)
+            return False
         state.close_cycle(when=now, exit_reason=plan.reason, exit_price=close_price)
         self._persist_state(state)
         return True
@@ -137,6 +163,7 @@ class DcaBot:
         next_index = cycle.completed_safety_orders + 1
         quote_amount = current_quote_amount(self._config.dca, next_index)
         plan = build_entry_order_plan(
+            settings=self._config.dca,
             symbol=self._config.dca.symbol,
             side=cycle.side,
             quote_amount=quote_amount,
@@ -147,15 +174,20 @@ class DcaBot:
         )
         fill_price = entry_price(snapshot, cycle.side)
         self._logger.info(
-            "Safety trigger hit. index=%s amount=%s fill_price=%s dry_run=%s",
+            "Safety trigger hit. index=%s order_type=%s amount=%s price=%s fill_price=%s dry_run=%s",
             next_index,
+            plan.order_type,
             plan.amount,
+            plan.price,
             fill_price,
             self._config.runtime.dry_run,
         )
         if self._config.runtime.dry_run:
             return True
         report = self._submit_and_fill(plan)
+        if report is None:
+            self._logger.info("Safety limit order index=%s was not filled before timeout.", next_index)
+            return False
         position_config = self._current_cycle_position_config(plan.symbol)
         state.add_safety_fill(
             quantity=report.traded_size,

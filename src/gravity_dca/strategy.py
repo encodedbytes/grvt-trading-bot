@@ -21,6 +21,13 @@ class OrderPlan:
     reason: str = ""
 
 
+def validate_order_type(order_type: str) -> str:
+    normalized = order_type.strip().lower()
+    if normalized not in {"market", "limit"}:
+        raise ValueError(f"Unsupported order_type: {order_type!r}")
+    return normalized
+
+
 def opposite_side(side: str) -> str:
     return "sell" if side == "buy" else "buy"
 
@@ -125,8 +132,50 @@ def new_client_order_id() -> str:
     return str(uuid.uuid4().int % (2**63 - 1) + 2**63)
 
 
+def limit_price_from_reference(
+    *,
+    side: str,
+    reference_price: Decimal,
+    offset_percent: Decimal,
+    instrument: InstrumentMeta,
+    exchange: GrvtExchange,
+) -> Decimal:
+    offset = offset_percent / Decimal("100")
+    if side == "buy":
+        price = reference_price * (Decimal("1") + offset)
+    else:
+        price = reference_price * (Decimal("1") - offset)
+    rounded = exchange.round_price(price, instrument.tick_size)
+    if rounded <= 0:
+        raise ValueError(
+            f"Computed limit price must be positive. side={side} "
+            f"reference_price={reference_price} offset_percent={offset_percent}"
+        )
+    return rounded
+
+
+def planned_price(
+    *,
+    settings: DcaSettings,
+    side: str,
+    reference_price: Decimal,
+    instrument: InstrumentMeta,
+    exchange: GrvtExchange,
+) -> Decimal | None:
+    if validate_order_type(settings.order_type) == "market":
+        return None
+    return limit_price_from_reference(
+        side=side,
+        reference_price=reference_price,
+        offset_percent=settings.limit_price_offset_percent,
+        instrument=instrument,
+        exchange=exchange,
+    )
+
+
 def build_entry_order_plan(
     *,
+    settings: DcaSettings,
     symbol: str,
     side: str,
     quote_amount: Decimal,
@@ -146,9 +195,15 @@ def build_entry_order_plan(
         client_order_id=new_client_order_id(),
         symbol=symbol,
         side=side,
-        order_type="market",
+        order_type=validate_order_type(settings.order_type),
         amount=amount,
-        price=None,
+        price=planned_price(
+            settings=settings,
+            side=side,
+            reference_price=reference_price,
+            instrument=instrument,
+            exchange=exchange,
+        ),
         reduce_only=False,
         reason=reason,
     )
@@ -157,15 +212,26 @@ def build_entry_order_plan(
 def build_exit_order_plan(
     *,
     cycle: ActiveCycleState,
+    settings: DcaSettings,
+    instrument: InstrumentMeta,
+    snapshot: MarketSnapshot,
+    exchange: GrvtExchange,
     reason: str,
 ) -> OrderPlan:
+    side = opposite_side(cycle.side)
     return OrderPlan(
         client_order_id=new_client_order_id(),
         symbol=cycle.symbol,
-        side=opposite_side(cycle.side),
-        order_type="market",
+        side=side,
+        order_type=validate_order_type(settings.order_type),
         amount=cycle.total_quantity,
-        price=None,
+        price=planned_price(
+            settings=settings,
+            side=side,
+            reference_price=exit_price(snapshot, cycle.side),
+            instrument=instrument,
+            exchange=exchange,
+        ),
         reduce_only=True,
         reason=reason,
     )
