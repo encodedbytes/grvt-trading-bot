@@ -190,6 +190,21 @@ Docker:
 - `make docker-logs CONTAINER=grvt-dca-eth`
 - `make docker-down CONTAINER=grvt-dca-eth`
 
+## Docker Hub CI
+
+The GitHub Actions workflow can publish the container image to Docker Hub on pushes to `main` and on version tags like `v0.2.0`.
+
+Configure these in GitHub before enabling releases:
+- repository variable `DOCKERHUB_IMAGE`
+  - example: `encodedbytes/grvt-trading-bot`
+- repository secret `DOCKERHUB_USERNAME`
+- repository secret `DOCKERHUB_TOKEN`
+
+Published tags:
+- short git SHA on `main` and tag builds
+- `latest` on the default branch
+- the git tag itself on version tags, for example `v0.2.0`
+
 ## Operating Notes
 
 - Use `make instrument` before changing symbols or budgets.
