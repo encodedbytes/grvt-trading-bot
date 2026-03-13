@@ -180,5 +180,6 @@ Docker:
 - A quote budget must satisfy both `min_notional` and `min_size`.
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - Do not change `margin_type` while a live position is open for that symbol.
+- Current implementation tasks for limit-order support are tracked in [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md).
 - Current agent continuity notes are in [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md).
 - GRVT-specific AI skill notes are in [SKILLS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/SKILLS.md).

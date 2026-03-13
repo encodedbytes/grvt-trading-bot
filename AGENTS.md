@@ -19,6 +19,7 @@ Before making changes or running the bot again, check:
 - current state file referenced by `dca.state_file`
 - whether a live container is running
 - whether the exchange already has an open position for the configured symbol
+- [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md) if resuming limit-order work
 
 ## Current Operational Facts
 
