@@ -241,3 +241,42 @@ Published tags:
 - Current implementation tasks for limit-order support are tracked in [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md).
 - Current agent continuity notes are in [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md).
 - GRVT-specific AI skill notes are in [SKILLS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/SKILLS.md).
+
+## Changing Config Mid-Cycle
+
+The bot persists position facts in state, but it reads strategy behavior from the current config on every run. That means some config edits affect an already-open cycle immediately.
+
+Safe to change for future visibility or housekeeping:
+- `runtime.log_level`
+- Docker or process-level settings that do not affect trading logic
+
+Applies immediately to the current open cycle on the next poll:
+- `take_profit_percent`
+- `stop_loss_percent`
+- `price_deviation_percent`
+- `safety_order_step_scale`
+- `safety_order_volume_scale`
+- `safety_order_quote_amount`
+- `max_safety_orders`
+- `order_type`
+- `limit_price_offset_percent`
+- `runtime.limit_ttl_seconds`
+
+Mostly applies only when a new cycle starts:
+- `initial_quote_amount`
+- `max_cycles`
+
+High-risk changes to avoid mid-cycle:
+- `symbol`
+- `state_file`
+- `side`
+- switching between materially different sizing assumptions while a live cycle is open
+- `margin_type`
+
+Exchange-side notes:
+- `initial_leverage` can affect the live instrument configuration before trading logic runs.
+- `margin_type` changes are blocked while a live position exists for that symbol.
+
+Recommended practice:
+- treat TP/SL, safety sizing, ladder depth, and execution mode as fixed until the current cycle closes
+- if you want a different strategy, use a new config file and a new `state_file`
