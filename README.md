@@ -208,6 +208,7 @@ Local:
 - `make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp`
 - `make thresholds CONFIG=config.toml`
 - `make recovery-status CONFIG=config.toml`
+- `make notify-test CONFIG=config.toml`
 - `make test`
 
 Docker:
@@ -239,7 +240,7 @@ Published tags:
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - Do not change `margin_type` while a live position is open for that symbol.
 - Current implementation tasks for limit-order support are tracked in [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md).
-- Planned Telegram notification work is tracked in [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md).
+- Telegram notification implementation notes are tracked in [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md).
 - Current agent continuity notes are in [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md).
 - GRVT-specific AI skill notes are in [SKILLS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/SKILLS.md).
 
@@ -281,3 +282,81 @@ Exchange-side notes:
 Recommended practice:
 - treat TP/SL, safety sizing, ladder depth, and execution mode as fixed until the current cycle closes
 - if you want a different strategy, use a new config file and a new `state_file`
+
+## Telegram Notifications
+
+Telegram support is optional and one-way only.
+
+Supported first-pass notifications:
+- bot startup
+- recovery result on startup
+- initial entry fill
+- safety order fill
+- take profit fill
+- stop loss fill
+- limit order timeout and cancel
+- iteration failure
+- leverage or margin config change
+
+Add a Telegram section to your config:
+
+```toml
+[telegram]
+enabled = true
+bot_token = "123456:ABCDEF..."
+chat_id = "123456789"
+send_startup_summary = true
+notify_position_config_changes = true
+```
+
+How to get a Telegram bot token:
+- Open Telegram and start a chat with `@BotFather`
+- Send `/newbot`
+- Follow the prompts for the bot name and username
+- BotFather will return a token that looks like `123456:ABCDEF...`
+- Put that value in `telegram.bot_token`
+
+How to get your Telegram chat id:
+- Start a chat with your new bot and send it any message, for example `hello`
+- Then open this URL in your browser, replacing `<BOT_TOKEN>`:
+
+```text
+https://api.telegram.org/bot<BOT_TOKEN>/getUpdates
+```
+
+- Find the `chat` object in the JSON response
+- Use the numeric `id` field from that object as `telegram.chat_id`
+
+Example response fragment:
+
+```json
+{
+  "message": {
+    "chat": {
+      "id": 123456789
+    }
+  }
+}
+```
+
+Notes:
+- For a direct message, `chat_id` is usually a positive integer
+- For a group, `chat_id` is usually a negative integer
+- If `getUpdates` returns no messages, send another message to the bot first and retry
+- If you want notifications in a group, add the bot to the group and send a message there first
+
+After setting `bot_token` and `chat_id`, verify the integration with:
+
+```bash
+make notify-test CONFIG=config.toml
+```
+
+Test the notifier without waiting for a trade event:
+
+```bash
+make notify-test CONFIG=config.toml
+```
+
+Notes:
+- Telegram notification failures are logged but do not stop trading.
+- The first version does not support Telegram commands or bot control from chat.

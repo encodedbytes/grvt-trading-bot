@@ -26,6 +26,7 @@ Before making changes or running the bot again, check:
 ## Current Operational Facts
 
 - The bot supports `market` and aggressive `limit` orders for entries and exits.
+- Telegram notifications are optional and one-way only.
 - Take profit is price-based, not ROE-based.
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
 - Each bot must use a unique `state_file`.
@@ -43,6 +44,7 @@ make once CONFIG=config.toml
 make run CONFIG=config.toml
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
 make recovery-status CONFIG=config.toml
+make notify-test CONFIG=config.toml
 ```
 
 Docker:

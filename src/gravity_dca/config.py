@@ -45,10 +45,20 @@ class RuntimeSettings:
 
 
 @dataclass(frozen=True)
+class TelegramSettings:
+    enabled: bool = False
+    bot_token: str | None = None
+    chat_id: str | None = None
+    send_startup_summary: bool = True
+    notify_position_config_changes: bool = True
+
+
+@dataclass(frozen=True)
 class AppConfig:
     credentials: GrvtCredentials
     dca: DcaSettings
     runtime: RuntimeSettings
+    telegram: TelegramSettings
 
 
 def _optional_decimal(value: object) -> Decimal | None:
@@ -76,6 +86,7 @@ def load_config(path: str | Path) -> AppConfig:
     credentials = raw["credentials"]
     dca = raw["dca"]
     runtime = raw.get("runtime", {})
+    telegram = raw.get("telegram", {})
 
     return AppConfig(
         credentials=GrvtCredentials(
@@ -115,5 +126,22 @@ def load_config(path: str | Path) -> AppConfig:
             order_fill_poll_seconds=int(runtime.get("order_fill_poll_seconds", 1)),
             limit_ttl_seconds=int(runtime.get("limit_ttl_seconds", 30)),
             log_level=str(runtime.get("log_level", "INFO")).upper(),
+        ),
+        telegram=TelegramSettings(
+            enabled=bool(telegram.get("enabled", False)),
+            bot_token=(
+                str(telegram["bot_token"]).strip()
+                if telegram.get("bot_token") is not None
+                else None
+            ),
+            chat_id=(
+                str(telegram["chat_id"]).strip()
+                if telegram.get("chat_id") is not None
+                else None
+            ),
+            send_startup_summary=bool(telegram.get("send_startup_summary", True)),
+            notify_position_config_changes=bool(
+                telegram.get("notify_position_config_changes", True)
+            ),
         ),
     )

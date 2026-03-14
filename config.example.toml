@@ -27,3 +27,10 @@ dry_run = true
 poll_seconds = 30
 limit_ttl_seconds = 30
 log_level = "INFO"
+
+[telegram]
+enabled = false
+bot_token = "replace-with-telegram-bot-token"
+chat_id = "replace-with-chat-id"
+send_startup_summary = true
+notify_position_config_changes = true

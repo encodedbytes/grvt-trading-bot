@@ -106,3 +106,43 @@ dry_run = true
     config = load_config(config_path)
 
     assert config.dca.state_file == tmp_path / "state" / ".gravity-dca-eth.json"
+
+
+def test_load_config_reads_optional_telegram_settings(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[telegram]
+enabled = true
+bot_token = "bot-token"
+chat_id = "12345"
+send_startup_summary = false
+notify_position_config_changes = false
+
+[runtime]
+dry_run = true
+"""
+    )
+
+    config = load_config(config_path)
+
+    assert config.telegram.enabled is True
+    assert config.telegram.bot_token == "bot-token"
+    assert config.telegram.chat_id == "12345"
+    assert config.telegram.send_startup_summary is False
+    assert config.telegram.notify_position_config_changes is False

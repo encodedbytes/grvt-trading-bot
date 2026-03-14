@@ -397,11 +397,11 @@ class GrvtExchange:
         leverage: Decimal | None,
         margin_type: str | None,
         dry_run: bool,
-    ) -> None:
+    ) -> list[str]:
         desired_margin_type = normalize_margin_type(margin_type)
         desired_leverage = leverage
         if desired_margin_type is None and desired_leverage is None:
-            return
+            return []
 
         current_position = self.get_position(symbol)
         initial_config = self.get_initial_position_config(symbol)
@@ -423,7 +423,7 @@ class GrvtExchange:
         if desired_leverage is not None and current_leverage == desired_leverage:
             desired_leverage = None
         if desired_margin_type is None and desired_leverage is None:
-            return
+            return []
 
         open_size = abs(Decimal(str((current_position or {}).get("size", "0"))))
         if desired_margin_type is not None and open_size > 0:
@@ -442,7 +442,7 @@ class GrvtExchange:
                 current_leverage,
                 leverage,
             )
-            return
+            return []
 
         if desired_margin_type is not None:
             effective_leverage = desired_leverage or current_leverage
@@ -457,10 +457,14 @@ class GrvtExchange:
                 effective_leverage,
             )
             self.set_position_config(symbol, desired_margin_type, effective_leverage)
-            return
+            return [
+                f"margin_type={desired_margin_type}",
+                f"leverage={effective_leverage}",
+            ]
 
         self._logger.info("Setting GRVT initial leverage for %s leverage=%s", symbol, leverage)
         self.set_initial_leverage(symbol, desired_leverage)
+        return [f"leverage={desired_leverage}"]
 
     def place_order(
         self,
