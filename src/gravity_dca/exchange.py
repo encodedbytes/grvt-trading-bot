@@ -156,9 +156,18 @@ class GrvtExchange:
         return f"{self._trade_data_endpoint}/{suffix.lstrip('/')}"
 
     def _auth_and_post(self, path: str, payload: dict) -> dict:
+        self.ensure_private_auth()
         try:
             return self._client._auth_and_post(path, payload)
         except Exception as exc:
+            response = getattr(exc, "response", None)
+            if response is not None and getattr(response, "status_code", None) == 401:
+                self._logger.warning(
+                    "GRVT private POST returned 401, refreshing auth and retrying once. path=%s",
+                    path,
+                )
+                self.ensure_private_auth()
+                return self._client._auth_and_post(path, payload)
             if self._is_transient_request_error(exc):
                 raise TransientExchangeError(f"GRVT request failed for {path}: {exc}") from exc
             raise
