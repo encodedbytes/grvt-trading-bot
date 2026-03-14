@@ -197,6 +197,12 @@ make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-logs CONTAINER=grvt-dca-eth
 ```
 
+Restart a specific background container:
+
+```bash
+make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth
+```
+
 Stop it:
 
 ```bash
@@ -218,6 +224,7 @@ Docker:
 - `make docker-build`
 - `make docker-once CONFIG=config.toml`
 - `make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth`
+- `make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth`
 - `make docker-logs CONTAINER=grvt-dca-eth`
 - `make docker-down CONTAINER=grvt-dca-eth`
 

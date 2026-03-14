@@ -7,7 +7,7 @@ SYMBOL ?= BTC_USDT_Perp
 IMAGE ?= gravity-dca-bot:local
 CONTAINER ?= gravity-dca
 
-.PHONY: venv install test run once instrument thresholds recovery-status notify-test docker-build docker-run docker-once docker-up docker-logs docker-down clean
+.PHONY: venv install test run once instrument thresholds recovery-status notify-test docker-build docker-run docker-once docker-up docker-restart docker-logs docker-down clean
 
 venv:
 	python3 -m venv .venv
@@ -54,6 +54,16 @@ docker-once:
 
 docker-up:
 	mkdir -p state
+	docker run -d \
+		--name $(CONTAINER) \
+		-v $(PWD)/$(CONFIG):/app/config.toml:ro \
+		-v $(PWD)/state:/state \
+		$(IMAGE) --config /app/config.toml
+
+docker-restart:
+	mkdir -p state
+	docker stop $(CONTAINER) || true
+	docker rm $(CONTAINER) || true
 	docker run -d \
 		--name $(CONTAINER) \
 		-v $(PWD)/$(CONFIG):/app/config.toml:ro \
