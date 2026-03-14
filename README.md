@@ -15,7 +15,8 @@ The bot:
 Important behavior:
 - entries and exits can use `market` or aggressive `limit` orders
 - take profit is price-based, not ROE-based
-- on startup, the bot can rebuild a missing active cycle from the live GRVT position for the configured symbol
+- on startup, the bot first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
+- if full reconstruction is not safe, it falls back to position-level recovery
 
 ## Quick Start
 
@@ -134,11 +135,25 @@ State includes:
 Use a unique `state_file` per bot instance.
 
 On startup, the bot reconciles local state against the live GRVT position for the configured symbol:
-- if local state is missing and a live position exists, it rebuilds the active cycle from the exchange position
+- if local state is missing and a live position exists, it first tries to rebuild the full active cycle from exchange fills
+- if full reconstruction is not safe, it falls back to rebuilding from the live position snapshot
 - if local state exists but the exchange has no position, it clears the stale local active cycle
 - if both exist and materially disagree, it refuses to continue
 
-The current recovery is position-level, not full history reconstruction. It restores the active cycle from size, side, average entry, leverage, and margin type. It does not reconstruct exact safety-order count from exchange fills.
+Full reconstruction restores:
+- side
+- total quantity
+- total cost
+- average entry
+- completed safety orders
+- leverage and margin type
+- last client order id
+- last order id
+
+Current limits:
+- reconstruction only targets the currently open cycle
+- it relies on recent GRVT fills being consistent with the configured DCA ladder
+- if fills are ambiguous or inconsistent, the bot falls back to position-level recovery instead of guessing
 
 ## Multi-Bot Use
 

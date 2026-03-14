@@ -80,6 +80,18 @@ class PositionSnapshot:
     raw: dict | None = None
 
 
+@dataclass(frozen=True)
+class AccountFill:
+    event_time: int
+    symbol: str
+    side: str
+    size: Decimal
+    price: Decimal
+    order_id: str | None = None
+    client_order_id: str | None = None
+    raw: dict | None = None
+
+
 def parse_grvt_decimal(value: str | int | float | Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0")
@@ -217,6 +229,41 @@ class GrvtExchange:
             margin_type=config.margin_type,
             raw=position,
         )
+
+    def _parse_fill(self, payload: dict) -> AccountFill:
+        side = "buy" if bool(payload.get("is_buyer")) else "sell"
+        return AccountFill(
+            event_time=int(payload.get("event_time", "0")),
+            symbol=str(payload.get("instrument", "")),
+            side=side,
+            size=Decimal(str(payload.get("size", "0"))),
+            price=Decimal(str(payload.get("price", "0"))),
+            order_id=str(payload["order_id"]) if payload.get("order_id") else None,
+            client_order_id=(
+                str(payload["client_order_id"]) if payload.get("client_order_id") else None
+            ),
+            raw=payload,
+        )
+
+    def get_recent_fills(self, symbol: str, *, limit: int = 100) -> list[AccountFill]:
+        self.ensure_private_auth()
+        fills: list[AccountFill] = []
+        cursor: str | None = None
+        while len(fills) < limit:
+            params = {"cursor": cursor} if cursor else {}
+            response = self._client.fetch_my_trades(
+                symbol=symbol,
+                limit=min(50, limit - len(fills)),
+                params=params,
+            )
+            page = [self._parse_fill(item) for item in response.get("result", [])]
+            if not page:
+                break
+            fills.extend(page)
+            cursor = response.get("next")
+            if not cursor:
+                break
+        return fills[:limit]
 
     def _position_config_from_payload(self, payload: dict | None) -> PositionConfig:
         if payload is None:
