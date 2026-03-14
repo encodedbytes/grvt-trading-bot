@@ -29,6 +29,7 @@ Before making changes or running the bot again, check:
 - Telegram notifications are optional and one-way only.
 - Take profit is price-based, not ROE-based.
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
+- Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Each bot must use a unique `state_file`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.

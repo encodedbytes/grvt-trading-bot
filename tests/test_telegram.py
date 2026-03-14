@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from gravity_dca.bot import DcaBot
 from gravity_dca.config import AppConfig, DcaSettings, GrvtCredentials, RuntimeSettings, TelegramSettings
-from gravity_dca.exchange import InstrumentMeta, MarketSnapshot
+from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, TransientExchangeError
+from gravity_dca.state import BotState
+
+
+UTC = timezone.utc
 from gravity_dca.telegram import (
     NullNotifier,
     TelegramNotifier,
@@ -92,6 +97,11 @@ class FakeExchange:
         )
 
 
+class TransientRecoveryExchange(FakeExchange):
+    def get_open_position(self, symbol: str):
+        raise TransientExchangeError("temporary ssl failure")
+
+
 def test_build_notifier_returns_null_when_disabled() -> None:
     notifier = build_notifier(config(), logging.getLogger("gravity_dca"))
     assert isinstance(notifier, NullNotifier)
@@ -164,3 +174,69 @@ def test_bot_sends_startup_and_recovery_notifications_in_dry_run() -> None:
     assert result is True
     assert any("GRVT bot started" in message for message in fake_notifier.messages)
     assert any("recovery" in message for message in fake_notifier.messages)
+
+
+def test_bot_uses_local_state_when_recovery_has_transient_exchange_error(monkeypatch) -> None:
+    fake_notifier = FakeNotifier()
+    bot = DcaBot.__new__(DcaBot)
+    bot._config = config(
+        TelegramSettings(
+            enabled=True,
+            bot_token="token",
+            chat_id="chat",
+        )
+    )
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = TransientRecoveryExchange()
+    bot._notifier = fake_notifier
+    bot._startup_notified = False
+    bot._recovery_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    state = BotState()
+    state.start_cycle(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        when=datetime(2026, 3, 14, 12, 0, tzinfo=UTC),
+        quantity=Decimal("0.50"),
+        price=Decimal("2000"),
+        order_id="0x01",
+        client_order_id="123",
+    )
+
+    monkeypatch.setattr("gravity_dca.bot.load_state", lambda path: state)
+    monkeypatch.setattr("gravity_dca.bot.save_state", lambda path, state: None)
+
+    result = bot.run_once()
+
+    assert result is False
+    assert any("GRVT bot started" in message for message in fake_notifier.messages)
+    assert not any("bot error" in message for message in fake_notifier.messages)
+
+
+def test_iteration_failure_notifications_are_deduplicated_within_cooldown() -> None:
+    fake_notifier = FakeNotifier()
+    bot = DcaBot.__new__(DcaBot)
+    bot._config = config(
+        TelegramSettings(
+            enabled=True,
+            bot_token="token",
+            chat_id="chat",
+            error_notification_cooldown_seconds=300,
+        )
+    )
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange()
+    bot._notifier = fake_notifier
+    bot._startup_notified = False
+    bot._recovery_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    error = RuntimeError("temporary ssl failure")
+    bot._notify_iteration_failure(error)
+    bot._notify_iteration_failure(error)
+
+    assert len(fake_notifier.messages) == 1
+    assert "bot error" in fake_notifier.messages[0]

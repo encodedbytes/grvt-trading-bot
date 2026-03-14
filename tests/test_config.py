@@ -133,9 +133,12 @@ bot_token = "bot-token"
 chat_id = "12345"
 send_startup_summary = false
 notify_position_config_changes = false
+error_notification_cooldown_seconds = 120
 
 [runtime]
 dry_run = true
+private_auth_retry_attempts = 5
+private_auth_retry_backoff_seconds = 4
 """
     )
 
@@ -146,3 +149,6 @@ dry_run = true
     assert config.telegram.chat_id == "12345"
     assert config.telegram.send_startup_summary is False
     assert config.telegram.notify_position_config_changes is False
+    assert config.telegram.error_notification_cooldown_seconds == 120
+    assert config.runtime.private_auth_retry_attempts == 5
+    assert config.runtime.private_auth_retry_backoff_seconds == 4

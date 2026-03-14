@@ -6,7 +6,7 @@ import logging
 
 from .bot import DcaBot
 from .config import load_config
-from .exchange import GrvtExchange
+from .exchange import GrvtExchange, TransientExchangeError
 from .recovery import reconcile_state
 from .state import load_state
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
@@ -14,6 +14,15 @@ from .telegram import build_notifier
 
 
 UTC = timezone.utc
+
+
+def build_exchange(config, logger: logging.Logger) -> GrvtExchange:
+    return GrvtExchange(
+        config.credentials,
+        logger,
+        private_auth_retry_attempts=config.runtime.private_auth_retry_attempts,
+        private_auth_retry_backoff_seconds=config.runtime.private_auth_retry_backoff_seconds,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,7 +65,7 @@ def main() -> None:
     )
 
     if args.instrument:
-        exchange = GrvtExchange(config.credentials, logging.getLogger("gravity_dca"))
+        exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         instrument = exchange.get_instrument(args.instrument)
         snapshot = exchange.get_market_snapshot(args.instrument)
         print(f"symbol={instrument.symbol}")
@@ -91,17 +100,27 @@ def main() -> None:
         return
 
     if args.recovery_status:
-        exchange = GrvtExchange(config.credentials, logging.getLogger("gravity_dca"))
+        exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
-        exchange_position = exchange.get_open_position(config.dca.symbol)
+        try:
+            exchange_position = exchange.get_open_position(config.dca.symbol)
+            exchange_fills = (
+                exchange.get_recent_fills(config.dca.symbol) if exchange_position is not None else None
+            )
+        except TransientExchangeError as exc:
+            print(f"state_file={config.dca.state_file}")
+            print(f"symbol={config.dca.symbol}")
+            print(f"local_active_cycle={'true' if state.active_cycle is not None else 'false'}")
+            print("exchange_position=unknown")
+            print("decision=recovery-unavailable")
+            print(f"message={exc}")
+            return
         decision = reconcile_state(
             state=state,
             settings=config.dca,
             symbol=config.dca.symbol,
             exchange_position=exchange_position,
-            exchange_fills=(
-                exchange.get_recent_fills(config.dca.symbol) if exchange_position is not None else None
-            ),
+            exchange_fills=exchange_fills,
             when=datetime.now(tz=UTC),
         )
         print(f"state_file={config.dca.state_file}")

@@ -26,6 +26,8 @@ state_file = ".gravity-dca-state.json"
 dry_run = true
 poll_seconds = 30
 limit_ttl_seconds = 30
+private_auth_retry_attempts = 3
+private_auth_retry_backoff_seconds = 2
 log_level = "INFO"
 
 [telegram]
@@ -34,3 +36,4 @@ bot_token = "replace-with-telegram-bot-token"
 chat_id = "replace-with-chat-id"
 send_startup_summary = true
 notify_position_config_changes = true
+error_notification_cooldown_seconds = 300

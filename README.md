@@ -17,6 +17,7 @@ Important behavior:
 - take profit is price-based, not ROE-based
 - on startup, the bot first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
 - if full reconstruction is not safe, it falls back to position-level recovery
+- transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 
 ## Quick Start
 
@@ -96,6 +97,7 @@ Notes:
 - `limit_price_offset_percent` is used only for `order_type = "limit"`.
 - `take_profit_percent` is based on price move from average entry, not leveraged ROE.
 - `initial_leverage` and `margin_type` are optional.
+- `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
 - Production credentials require `environment = "prod"`.
 
 ## How It Trades
@@ -139,6 +141,7 @@ On startup, the bot reconciles local state against the live GRVT position for th
 - if full reconstruction is not safe, it falls back to rebuilding from the live position snapshot
 - if local state exists but the exchange has no position, it clears the stale local active cycle
 - if both exist and materially disagree, it refuses to continue
+- if recovery hits a transient private-auth or network failure and local active state already exists, it keeps the local cycle for that iteration instead of aborting the poll
 
 Full reconstruction restores:
 - side
@@ -307,6 +310,7 @@ bot_token = "123456:ABCDEF..."
 chat_id = "123456789"
 send_startup_summary = true
 notify_position_config_changes = true
+error_notification_cooldown_seconds = 300
 ```
 
 How to get a Telegram bot token:
@@ -344,6 +348,7 @@ Notes:
 - For a group, `chat_id` is usually a negative integer
 - If `getUpdates` returns no messages, send another message to the bot first and retry
 - If you want notifications in a group, add the bot to the group and send a message there first
+- `error_notification_cooldown_seconds` suppresses repeated identical iteration-failure alerts for a cooldown window
 
 After setting `bot_token` and `chat_id`, verify the integration with:
 
@@ -360,3 +365,4 @@ make notify-test CONFIG=config.toml
 Notes:
 - Telegram notification failures are logged but do not stop trading.
 - The first version does not support Telegram commands or bot control from chat.
+- Repeated identical bot errors are rate-limited before sending to Telegram.

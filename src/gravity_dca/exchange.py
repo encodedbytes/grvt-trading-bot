@@ -92,6 +92,10 @@ class AccountFill:
     raw: dict | None = None
 
 
+class TransientExchangeError(RuntimeError):
+    pass
+
+
 def parse_grvt_decimal(value: str | int | float | Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0")
@@ -114,7 +118,14 @@ def normalize_margin_type(value: str | None) -> str | None:
 
 
 class GrvtExchange:
-    def __init__(self, credentials: GrvtCredentials, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        credentials: GrvtCredentials,
+        logger: logging.Logger,
+        *,
+        private_auth_retry_attempts: int = 3,
+        private_auth_retry_backoff_seconds: int = 2,
+    ) -> None:
         try:
             env = GrvtEnv(credentials.environment)
         except ValueError as exc:
@@ -127,6 +138,8 @@ class GrvtExchange:
         self._api_key = credentials.api_key
         self._private_key = credentials.private_key
         self._trading_account_id = credentials.trading_account_id
+        self._private_auth_retry_attempts = max(private_auth_retry_attempts, 1)
+        self._private_auth_retry_backoff_seconds = max(private_auth_retry_backoff_seconds, 0)
         endpoint_domains = get_grvt_endpoint_domains(env.value)
         self._trade_data_endpoint = endpoint_domains[GrvtEndpointType.TRADE_DATA]
         self._client = GrvtCcxt(
@@ -143,7 +156,12 @@ class GrvtExchange:
         return f"{self._trade_data_endpoint}/{suffix.lstrip('/')}"
 
     def _auth_and_post(self, path: str, payload: dict) -> dict:
-        return self._client._auth_and_post(path, payload)
+        try:
+            return self._client._auth_and_post(path, payload)
+        except Exception as exc:
+            if self._is_transient_request_error(exc):
+                raise TransientExchangeError(f"GRVT request failed for {path}: {exc}") from exc
+            raise
 
     def get_instrument(self, symbol: str) -> InstrumentMeta:
         market = self._client.fetch_market(symbol)
@@ -178,25 +196,90 @@ class GrvtExchange:
         steps = (price / tick_size).to_integral_value(rounding=ROUND_DOWN)
         return steps * tick_size
 
+    def _is_retryable_auth_http_status(self, status_code: int) -> bool:
+        return status_code in {408, 425, 429, 500, 502, 503, 504}
+
+    def _is_transient_request_error(self, exc: Exception) -> bool:
+        if isinstance(exc, requests.exceptions.SSLError):
+            return True
+        if isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+            return True
+        return False
+
     def ensure_private_auth(self) -> None:
-        response = requests.post(
-            get_grvt_endpoint(self._env, "AUTH"),
-            json={"api_key": self._api_key},
-            timeout=10,
-        )
-        if not response.ok:
-            raise ValueError(
-                f"GRVT auth failed with HTTP {response.status_code}: {response.text[:200]}"
-            )
-        if "gravity" not in response.headers.get("Set-Cookie", ""):
-            raise ValueError(f"GRVT auth did not return a session cookie: {response.text[:200]}")
+        auth_url = get_grvt_endpoint(self._env, "AUTH")
+        last_error: Exception | None = None
+        for attempt in range(1, self._private_auth_retry_attempts + 1):
+            try:
+                response = requests.post(
+                    auth_url,
+                    json={"api_key": self._api_key},
+                    timeout=10,
+                )
+                if not response.ok:
+                    message = (
+                        f"GRVT auth failed with HTTP {response.status_code}: "
+                        f"{response.text[:200]}"
+                    )
+                    if (
+                        self._is_retryable_auth_http_status(response.status_code)
+                        and attempt < self._private_auth_retry_attempts
+                    ):
+                        self._logger.warning(
+                            "Retrying GRVT private auth after HTTP %s attempt=%s/%s",
+                            response.status_code,
+                            attempt,
+                            self._private_auth_retry_attempts,
+                        )
+                        time.sleep(self._private_auth_retry_backoff_seconds * attempt)
+                        continue
+                    raise ValueError(message)
+                if "gravity" not in response.headers.get("Set-Cookie", ""):
+                    raise ValueError(
+                        f"GRVT auth did not return a session cookie: {response.text[:200]}"
+                    )
+                return
+            except Exception as exc:
+                last_error = exc
+                if (
+                    self._is_transient_request_error(exc)
+                    and attempt < self._private_auth_retry_attempts
+                ):
+                    self._logger.warning(
+                        "Retrying GRVT private auth after transient error attempt=%s/%s error=%s",
+                        attempt,
+                        self._private_auth_retry_attempts,
+                        exc,
+                    )
+                    time.sleep(self._private_auth_retry_backoff_seconds * attempt)
+                    continue
+                if self._is_transient_request_error(exc):
+                    raise TransientExchangeError(
+                        f"GRVT private auth failed after {attempt} attempts: {exc}"
+                    ) from exc
+                raise
+        if last_error is not None:
+            raise TransientExchangeError(
+                f"GRVT private auth failed after {self._private_auth_retry_attempts} attempts: "
+                f"{last_error}"
+            ) from last_error
 
     def get_account_margin_type(self) -> str | None:
-        summary = self._client.get_account_summary("sub-account")
+        try:
+            summary = self._client.get_account_summary("sub-account")
+        except Exception as exc:
+            if self._is_transient_request_error(exc):
+                raise TransientExchangeError(f"GRVT account summary failed: {exc}") from exc
+            raise
         return normalize_margin_type(summary.get("margin_type"))
 
     def get_position(self, symbol: str) -> dict | None:
-        positions = self._client.fetch_positions([symbol])
+        try:
+            positions = self._client.fetch_positions([symbol])
+        except Exception as exc:
+            if self._is_transient_request_error(exc):
+                raise TransientExchangeError(f"GRVT fetch_positions failed for {symbol}: {exc}") from exc
+            raise
         for position in positions:
             if position.get("instrument") == symbol:
                 return position
@@ -251,11 +334,18 @@ class GrvtExchange:
         cursor: str | None = None
         while len(fills) < limit:
             params = {"cursor": cursor} if cursor else {}
-            response = self._client.fetch_my_trades(
-                symbol=symbol,
-                limit=min(50, limit - len(fills)),
-                params=params,
-            )
+            try:
+                response = self._client.fetch_my_trades(
+                    symbol=symbol,
+                    limit=min(50, limit - len(fills)),
+                    params=params,
+                )
+            except Exception as exc:
+                if self._is_transient_request_error(exc):
+                    raise TransientExchangeError(
+                        f"GRVT fetch_my_trades failed for {symbol}: {exc}"
+                    ) from exc
+                raise
             page = [self._parse_fill(item) for item in response.get("result", [])]
             if not page:
                 break
