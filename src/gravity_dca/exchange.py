@@ -155,10 +155,16 @@ class GrvtExchange:
     def _trade_path(self, suffix: str) -> str:
         return f"{self._trade_data_endpoint}/{suffix.lstrip('/')}"
 
+    def _is_unauthenticated_payload(self, response: dict) -> bool:
+        status = response.get("status")
+        code = response.get("code")
+        message = str(response.get("message", "")).lower()
+        return status == 401 or code == 1000 and "authenticate prior" in message
+
     def _auth_and_post(self, path: str, payload: dict) -> dict:
         self.ensure_private_auth()
         try:
-            return self._client._auth_and_post(path, payload)
+            response = self._client._auth_and_post(path, payload)
         except Exception as exc:
             response = getattr(exc, "response", None)
             if response is not None and getattr(response, "status_code", None) == 401:
@@ -171,6 +177,16 @@ class GrvtExchange:
             if self._is_transient_request_error(exc):
                 raise TransientExchangeError(f"GRVT request failed for {path}: {exc}") from exc
             raise
+        if self._is_unauthenticated_payload(response):
+            self._logger.warning(
+                "GRVT private POST returned unauthenticated payload, refreshing auth and retrying once. "
+                "path=%s response=%s",
+                path,
+                response,
+            )
+            self.ensure_private_auth()
+            return self._client._auth_and_post(path, payload)
+        return response
 
     def get_instrument(self, symbol: str) -> InstrumentMeta:
         market = self._client.fetch_market(symbol)
