@@ -90,8 +90,12 @@ def main() -> None:
         exchange_position = exchange.get_open_position(config.dca.symbol)
         decision = reconcile_state(
             state=state,
+            settings=config.dca,
             symbol=config.dca.symbol,
             exchange_position=exchange_position,
+            exchange_fills=(
+                exchange.get_recent_fills(config.dca.symbol) if exchange_position is not None else None
+            ),
             when=datetime.now(tz=UTC),
         )
         print(f"state_file={config.dca.state_file}")
@@ -100,6 +104,15 @@ def main() -> None:
         print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
         print(f"decision={decision.action}")
         print(f"message={decision.message}")
+        print(f"reconstruction_attempted={'true' if decision.reconstruction_attempted else 'false'}")
+        print(f"reconstruction_succeeded={'true' if decision.reconstruction_succeeded else 'false'}")
+        if decision.reconstruction_message is not None:
+            print(f"reconstruction_message={decision.reconstruction_message}")
+        if decision.recovered_cycle is not None:
+            print(
+                "reconstructed_completed_safety_orders="
+                f"{decision.recovered_cycle.completed_safety_orders}"
+            )
         return
 
     bot = DcaBot(config, logging.getLogger("gravity_dca"))

@@ -80,19 +80,33 @@ class DcaBot:
         save_state(self._config.dca.state_file, state)
 
     def _reconcile_state_with_exchange(self, *, state: BotState, now: datetime) -> BotState:
+        exchange_position = self._exchange.get_open_position(self._config.dca.symbol)
         decision = reconcile_state(
             state=state,
+            settings=self._config.dca,
             symbol=self._config.dca.symbol,
-            exchange_position=self._exchange.get_open_position(self._config.dca.symbol),
+            exchange_position=exchange_position,
+            exchange_fills=(
+                self._exchange.get_recent_fills(self._config.dca.symbol)
+                if exchange_position is not None
+                else None
+            ),
             when=now,
         )
         self._logger.info(decision.message)
+        if decision.reconstruction_message is not None:
+            self._logger.info(
+                "Recovery reconstruction attempted=%s succeeded=%s details=%s",
+                decision.reconstruction_attempted,
+                decision.reconstruction_succeeded,
+                decision.reconstruction_message,
+            )
         if decision.action == "keep-local":
             if decision.recovered_cycle is not None:
                 state.replace_active_cycle(decision.recovered_cycle)
                 self._persist_state(state)
             return state
-        if decision.action == "rebuild-from-exchange":
+        if decision.action in {"rebuild-from-exchange", "rebuild-from-exchange-history"}:
             state.replace_active_cycle(decision.recovered_cycle)
             self._persist_state(state)
             return state

@@ -4,13 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from .config import DcaSettings
+from .exchange import AccountFill
 from .exchange import PositionSnapshot
+from .recovery_common import PRICE_TOLERANCE_RATIO, QTY_TOLERANCE_RATIO, within_tolerance
+from .reconstruction import reconstruct_active_cycle
 from .state import ActiveCycleState, BotState
-
-
-QTY_TOLERANCE_RATIO = Decimal("0.0001")
-PRICE_TOLERANCE_RATIO = Decimal("0.0001")
-MIN_TOLERANCE = Decimal("0.00000001")
 
 
 @dataclass(frozen=True)
@@ -18,12 +17,9 @@ class RecoveryDecision:
     action: str
     message: str
     recovered_cycle: ActiveCycleState | None = None
-
-
-def _within_tolerance(left: Decimal, right: Decimal, ratio: Decimal) -> bool:
-    baseline = max(abs(left), abs(right), Decimal("1"))
-    tolerance = max(MIN_TOLERANCE, baseline * ratio)
-    return abs(left - right) <= tolerance
+    reconstruction_attempted: bool = False
+    reconstruction_succeeded: bool = False
+    reconstruction_message: str | None = None
 
 
 def _build_recovered_cycle(
@@ -54,8 +50,10 @@ def _build_recovered_cycle(
 def reconcile_state(
     *,
     state: BotState,
+    settings: DcaSettings,
     symbol: str,
     exchange_position: PositionSnapshot | None,
+    exchange_fills: list[AccountFill] | None,
     when: datetime,
 ) -> RecoveryDecision:
     local_cycle = state.active_cycle
@@ -71,6 +69,22 @@ def reconcile_state(
         )
 
     if local_cycle is None and exchange_position is not None:
+        reconstruction = None
+        if exchange_fills is not None:
+            reconstruction = reconstruct_active_cycle(
+                settings=settings,
+                position=exchange_position,
+                fills=exchange_fills,
+            )
+            if reconstruction.succeeded:
+                return RecoveryDecision(
+                    action="rebuild-from-exchange-history",
+                    message="Recovered active cycle from exchange fill history.",
+                    recovered_cycle=reconstruction.cycle,
+                    reconstruction_attempted=True,
+                    reconstruction_succeeded=True,
+                    reconstruction_message=reconstruction.message,
+                )
         return RecoveryDecision(
             action="rebuild-from-exchange",
             message=(
@@ -81,6 +95,11 @@ def reconcile_state(
                 position=exchange_position,
                 when=when,
                 existing_cycle=None,
+            ),
+            reconstruction_attempted=reconstruction is not None,
+            reconstruction_succeeded=False,
+            reconstruction_message=(
+                reconstruction.message if reconstruction is not None else None
             ),
         )
 
@@ -93,17 +112,34 @@ def reconcile_state(
     assert local_cycle is not None
     assert exchange_position is not None
 
+    reconstruction = None
+    if exchange_fills is not None:
+        reconstruction = reconstruct_active_cycle(
+            settings=settings,
+            position=exchange_position,
+            fills=exchange_fills,
+        )
+        if reconstruction.succeeded:
+            return RecoveryDecision(
+                action="rebuild-from-exchange-history",
+                message="Refreshed active cycle from exchange fill history.",
+                recovered_cycle=reconstruction.cycle,
+                reconstruction_attempted=True,
+                reconstruction_succeeded=True,
+                reconstruction_message=reconstruction.message,
+            )
+
     if local_cycle.side != exchange_position.side:
         raise ValueError(
             f"Local and exchange sides do not match: local_side={local_cycle.side} "
             f"exchange_side={exchange_position.side}"
         )
-    if not _within_tolerance(local_cycle.total_quantity, exchange_position.size, QTY_TOLERANCE_RATIO):
+    if not within_tolerance(local_cycle.total_quantity, exchange_position.size, QTY_TOLERANCE_RATIO):
         raise ValueError(
             f"Local and exchange quantities do not match: local_qty={local_cycle.total_quantity} "
             f"exchange_qty={exchange_position.size}"
         )
-    if not _within_tolerance(
+    if not within_tolerance(
         local_cycle.average_entry_price,
         exchange_position.average_entry_price,
         PRICE_TOLERANCE_RATIO,
@@ -123,4 +159,7 @@ def reconcile_state(
         action="keep-local",
         message="Local and exchange state match.",
         recovered_cycle=recovered_cycle,
+        reconstruction_attempted=reconstruction is not None,
+        reconstruction_succeeded=False,
+        reconstruction_message=reconstruction.message if reconstruction is not None else None,
     )

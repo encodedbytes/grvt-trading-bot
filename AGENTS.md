@@ -26,7 +26,7 @@ Before making changes or running the bot again, check:
 
 - The bot supports `market` and aggressive `limit` orders for entries and exits.
 - Take profit is price-based, not ROE-based.
-- On startup, the bot performs position-level exchange-backed recovery for the configured symbol.
+- On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
 - Each bot must use a unique `state_file`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
@@ -65,5 +65,5 @@ make docker-down CONTAINER=grvt-dca-eth
 - Inspect instrument constraints before changing symbol or budget.
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - If behavior looks wrong, compare exchange position data against the local state file before rerunning.
-- Recovery is position-level only. It restores active cycle size, side, average entry, leverage, and margin type, but does not reconstruct exact safety-order history.
+- Recovery now prefers exchange fill-history reconstruction for the active cycle. If fill history is ambiguous, it falls back to position-level recovery.
 - Prefer doing new implementation work on a feature branch and only merge back after verification.
