@@ -1,104 +1,66 @@
 # Telegram Notifications
 
-Status: planned
+Status: implemented
 
-This document tracks the first-pass Telegram notification integration for the GRVT bot.
+This file is now a completion record for the first-pass Telegram notification work. It is no longer an active task checklist.
 
-## Goal
+## Implemented
 
-Add one-way Telegram notifications for important bot events without introducing remote control or changing trading behavior.
+The bot now supports optional one-way Telegram notifications for:
+- bot startup
+- startup recovery result
+- initial entry fill
+- safety order fill
+- take profit fill
+- stop loss fill
+- limit timeout and cancel
+- iteration failure
+- leverage or margin config changes
+- explicit notifier verification via `--notify-test`
 
-## Scope
+## Verified Behavior
 
-Include:
-- optional Telegram config
-- startup notification
-- startup recovery notification
-- initial entry fill notification
-- safety order fill notification
-- take profit notification
-- stop loss notification
-- limit timeout / cancel notification
-- iteration failure notification
-- leverage / margin config change notification
-- a safe verification path, preferably a test notification command
+Verified locally:
+- Telegram config parsing
+- notifier error handling
+- message formatting
+- bot startup and recovery notification hooks
+- compile check and automated tests
 
-Exclude for the first pass:
+Verified live:
+- `--notify-test` successfully delivered a real Telegram message
+- five running bot containers were restarted and startup notifications were received successfully
+
+## What Was Delivered
+
+Core files updated:
+- [config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/config.py)
+- [telegram.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/telegram.py)
+- [bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
+- [cli.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/cli.py)
+
+Operator docs updated:
+- [config.example.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.example.toml)
+- [README.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/README.md)
+- [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md)
+- [Makefile](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/Makefile)
+
+Tests added:
+- [test_config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/tests/test_config.py)
+- [test_telegram.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/tests/test_telegram.py)
+
+## Future Enhancements
+
+Not included in the first pass:
 - Telegram command handling
-- start/stop/reconfigure bot from chat
-- trade execution from Telegram
-- multi-user or group-admin logic
-- complex chat UI or menus
-
-## Implementation Plan
-
-1. Add config support
-- Extend `src/gravity_dca/config.py`
-- Add optional `[telegram]` section
-- Parse:
-  - `enabled`
-  - `bot_token`
-  - `chat_id`
-  - optional `send_startup_summary`
-  - optional `notify_position_config_changes`
-
-2. Add notifier module
-- Create `src/gravity_dca/telegram.py`
-- Implement:
-  - `TelegramNotifier`
-  - `NullNotifier`
-- Keep Telegram transport logic isolated from bot orchestration and exchange logic
-
-3. Add message formatting helpers
-- Keep message formatting centralized and compact
-- Ensure messages are stable and easy to scan in chat
-
-4. Wire notifications into bot lifecycle
-- Startup
-- Recovery decision
-- Initial entry fill
-- Safety order fill
-- Take profit fill
-- Stop loss fill
-- Limit timeout and cancel
-- Position config change
-- Iteration failure in `run_forever()`
-
-5. Add a safe verification path
-- Add a CLI test path, for example `--notify-test`
-- It should validate config wiring without requiring a live trade event
-
-6. Add tests
-- Config parsing tests
-- Notifier behavior tests
-- Message formatting tests
-- Bot event hook tests with a fake notifier
-
-7. Update docs
-- `config.example.toml`
-- `README.md`
-- `AGENTS.md`
-
-## Design Constraints
-
-- Telegram notification failures must not block trading.
-- Telegram integration must be optional and disabled by default.
-- No Telegram logic should be embedded in `exchange.py`.
-- Use the notifier from the bot orchestration layer only.
-- Keep the first version one-way only.
-
-## Completion Criteria
-
-The task is complete when:
-- Telegram config is parsed and optional
-- A notifier can send a test message
-- Bot lifecycle events emit Telegram notifications
-- Notification failures are logged but do not interrupt trading
-- Docs and example config are updated
-- Tests pass
+- bot control or trade execution from chat
+- heartbeat notifications
+- on-demand status queries from Telegram
+- multi-chat or multi-user notification routing
 
 ## Notes For Future Sessions
 
-- Start with notifications only; do not add chat commands in the same change.
-- A no-op notifier should be the default path when Telegram is disabled.
-- A future phase can add heartbeat or status-on-demand if needed.
+- Telegram failures are logged but do not block trading.
+- The notifier is optional and disabled by default.
+- The first version is deliberately one-way only.
+- Any future command/control work should be treated as a separate feature with stricter safety design.

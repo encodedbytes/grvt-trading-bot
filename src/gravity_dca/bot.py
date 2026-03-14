@@ -21,16 +21,43 @@ from .strategy import (
     should_stop_loss,
     should_take_profit,
 )
+from .telegram import (
+    Notifier,
+    build_notifier,
+    format_cycle_summary,
+    format_fill_message,
+    format_iteration_failure,
+    format_limit_timeout_message,
+    format_position_config_change,
+    format_recovery_message,
+    format_startup_message,
+)
 
 
 UTC = timezone.utc
 
 
 class DcaBot:
-    def __init__(self, config: AppConfig, logger: logging.Logger) -> None:
+    def __init__(self, config: AppConfig, logger: logging.Logger, notifier: Notifier | None = None) -> None:
         self._config = config
         self._logger = logger
         self._exchange = GrvtExchange(config.credentials, logger)
+        self._notifier = notifier or build_notifier(config, logger)
+        self._startup_notified = False
+        self._recovery_notified = False
+
+    def _notify(self, text: str) -> None:
+        result = self._notifier.send(text)
+        if not result.delivered and result.detail != "telegram-disabled":
+            self._logger.info("Telegram notification not delivered: %s", result.detail)
+
+    def _maybe_notify_startup(self, state: BotState) -> None:
+        if self._startup_notified:
+            return
+        self._notify(format_startup_message(self._config))
+        if self._config.telegram.send_startup_summary and state.active_cycle is not None:
+            self._notify(format_cycle_summary("Active cycle on startup", state.active_cycle))
+        self._startup_notified = True
 
     def _submit_order(self, plan) -> str | None:
         response = self._exchange.place_order(
@@ -101,6 +128,9 @@ class DcaBot:
                 decision.reconstruction_succeeded,
                 decision.reconstruction_message,
             )
+        if not self._recovery_notified:
+            self._notify(format_recovery_message(self._config.dca.symbol, decision))
+            self._recovery_notified = True
         if decision.action == "keep-local":
             if decision.recovered_cycle is not None:
                 state.replace_active_cycle(decision.recovered_cycle)
@@ -150,6 +180,9 @@ class DcaBot:
         report = self._submit_and_fill(plan)
         if report is None:
             self._logger.info("Initial entry limit order was not filled before timeout.")
+            self._notify(
+                format_limit_timeout_message(plan.symbol, plan.reason, plan.client_order_id)
+            )
             return False
         position_config = self._current_cycle_position_config(plan.symbol)
         state.start_cycle(
@@ -164,6 +197,20 @@ class DcaBot:
             margin_type=position_config.margin_type,
         )
         self._persist_state(state)
+        self._notify(
+            format_fill_message(
+                symbol=plan.symbol,
+                label="initial entry filled",
+                side=plan.side,
+                quantity=report.traded_size,
+                price=report.avg_fill_price,
+                order_type=plan.order_type,
+                extra_lines=[
+                    f"leverage={position_config.leverage}",
+                    f"margin_type={position_config.margin_type}",
+                ],
+            )
+        )
         return True
 
     def _handle_exit(self, *, state: BotState, cycle, snapshot, now, reason: str) -> bool:
@@ -192,9 +239,23 @@ class DcaBot:
         report = self._submit_and_fill(plan)
         if report is None:
             self._logger.info("%s limit order was not filled before timeout.", reason)
+            self._notify(
+                format_limit_timeout_message(plan.symbol, plan.reason, plan.client_order_id)
+            )
             return False
         state.close_cycle(when=now, exit_reason=plan.reason, exit_price=close_price)
         self._persist_state(state)
+        self._notify(
+            format_fill_message(
+                symbol=plan.symbol,
+                label=f"{reason} filled",
+                side=plan.side,
+                quantity=report.traded_size,
+                price=report.avg_fill_price,
+                order_type=plan.order_type,
+                extra_lines=[f"exit_price_reference={close_price}"],
+            )
+        )
         return True
 
     def _handle_safety_order(self, *, state: BotState, cycle, instrument, snapshot) -> bool:
@@ -225,6 +286,9 @@ class DcaBot:
         report = self._submit_and_fill(plan)
         if report is None:
             self._logger.info("Safety limit order index=%s was not filled before timeout.", next_index)
+            self._notify(
+                format_limit_timeout_message(plan.symbol, plan.reason, plan.client_order_id)
+            )
             return False
         position_config = self._current_cycle_position_config(plan.symbol)
         state.add_safety_fill(
@@ -236,18 +300,42 @@ class DcaBot:
             margin_type=position_config.margin_type,
         )
         self._persist_state(state)
+        cycle = state.active_cycle
+        extra_lines = []
+        if cycle is not None:
+            extra_lines.extend(
+                [
+                    f"new_avg_entry={cycle.average_entry_price}",
+                    f"completed_safety_orders={cycle.completed_safety_orders}",
+                ]
+            )
+        self._notify(
+            format_fill_message(
+                symbol=plan.symbol,
+                label=f"safety order {next_index} filled",
+                side=plan.side,
+                quantity=report.traded_size,
+                price=report.avg_fill_price,
+                order_type=plan.order_type,
+                extra_lines=extra_lines,
+            )
+        )
         return True
 
     def run_once(self) -> bool:
         state = load_state(self._config.dca.state_file)
         now = datetime.now(tz=UTC)
         state = self._reconcile_state_with_exchange(state=state, now=now)
-        self._exchange.ensure_position_config(
+        self._maybe_notify_startup(state)
+        changes = self._exchange.ensure_position_config(
             symbol=self._config.dca.symbol,
             leverage=self._config.dca.initial_leverage,
             margin_type=self._config.dca.margin_type,
             dry_run=self._config.runtime.dry_run,
         )
+        if self._config.telegram.notify_position_config_changes:
+            for change in changes:
+                self._notify(format_position_config_change(self._config.dca.symbol, change))
         instrument = self._exchange.get_instrument(self._config.dca.symbol)
         snapshot = self._exchange.get_market_snapshot(self._config.dca.symbol)
 
@@ -302,6 +390,7 @@ class DcaBot:
         while True:
             try:
                 self.run_once()
-            except Exception:
+            except Exception as exc:
                 self._logger.exception("DCA iteration failed")
+                self._notify(format_iteration_failure(self._config.dca.symbol, exc))
             time.sleep(self._config.runtime.poll_seconds)

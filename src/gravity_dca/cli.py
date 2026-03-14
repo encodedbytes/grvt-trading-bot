@@ -10,6 +10,7 @@ from .exchange import GrvtExchange
 from .recovery import reconcile_state
 from .state import load_state
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
+from .telegram import build_notifier
 
 
 UTC = timezone.utc
@@ -36,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--recovery-status",
         action="store_true",
         help="Compare local state against the live exchange position and print the recovery decision.",
+    )
+    parser.add_argument(
+        "--notify-test",
+        action="store_true",
+        help="Send a Telegram test notification using the configured notifier.",
     )
     return parser
 
@@ -113,6 +119,14 @@ def main() -> None:
                 "reconstructed_completed_safety_orders="
                 f"{decision.recovered_cycle.completed_safety_orders}"
             )
+        return
+
+    if args.notify_test:
+        notifier = build_notifier(config, logging.getLogger("gravity_dca"))
+        result = notifier.send_test_message(config)
+        print(f"telegram_enabled={'true' if config.telegram.enabled else 'false'}")
+        print(f"notification_sent={'true' if result.delivered else 'false'}")
+        print(f"detail={result.detail}")
         return
 
     bot = DcaBot(config, logging.getLogger("gravity_dca"))
