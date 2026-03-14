@@ -102,3 +102,29 @@ def test_auth_and_post_retries_once_on_401(monkeypatch) -> None:
 
     assert result == {"ok": True}
     assert calls == ["auth", "post", "auth", "post"]
+
+
+def test_auth_and_post_retries_once_on_unauthenticated_payload() -> None:
+    client = exchange(1)
+    calls: list[str] = []
+
+    def fake_ensure_private_auth():
+        calls.append("auth")
+
+    def fake_auth_and_post(path: str, payload: dict):
+        calls.append("post")
+        if calls.count("post") == 1:
+            return {
+                "code": 1000,
+                "message": "You need to authenticate prior to using this functionality",
+                "status": 401,
+            }
+        return {"ok": True}
+
+    client.ensure_private_auth = fake_ensure_private_auth
+    client._client._auth_and_post = fake_auth_and_post
+
+    result = client._auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
+
+    assert result == {"ok": True}
+    assert calls == ["auth", "post", "auth", "post"]
