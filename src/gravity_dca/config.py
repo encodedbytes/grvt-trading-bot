@@ -41,6 +41,8 @@ class RuntimeSettings:
     order_fill_timeout_seconds: int = 10
     order_fill_poll_seconds: int = 1
     limit_ttl_seconds: int = 30
+    private_auth_retry_attempts: int = 3
+    private_auth_retry_backoff_seconds: int = 2
     log_level: str = "INFO"
 
 
@@ -51,6 +53,7 @@ class TelegramSettings:
     chat_id: str | None = None
     send_startup_summary: bool = True
     notify_position_config_changes: bool = True
+    error_notification_cooldown_seconds: int = 300
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,10 @@ def load_config(path: str | Path) -> AppConfig:
             order_fill_timeout_seconds=int(runtime.get("order_fill_timeout_seconds", 10)),
             order_fill_poll_seconds=int(runtime.get("order_fill_poll_seconds", 1)),
             limit_ttl_seconds=int(runtime.get("limit_ttl_seconds", 30)),
+            private_auth_retry_attempts=int(runtime.get("private_auth_retry_attempts", 3)),
+            private_auth_retry_backoff_seconds=int(
+                runtime.get("private_auth_retry_backoff_seconds", 2)
+            ),
             log_level=str(runtime.get("log_level", "INFO")).upper(),
         ),
         telegram=TelegramSettings(
@@ -142,6 +149,9 @@ def load_config(path: str | Path) -> AppConfig:
             send_startup_summary=bool(telegram.get("send_startup_summary", True)),
             notify_position_config_changes=bool(
                 telegram.get("notify_position_config_changes", True)
+            ),
+            error_notification_cooldown_seconds=int(
+                telegram.get("error_notification_cooldown_seconds", 300)
             ),
         ),
     )

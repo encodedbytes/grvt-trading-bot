@@ -5,7 +5,12 @@ import logging
 import time
 
 from .config import AppConfig
-from .exchange import FillReport, GrvtExchange, PositionConfig
+from .exchange import (
+    FillReport,
+    GrvtExchange,
+    PositionConfig,
+    TransientExchangeError,
+)
 from .recovery import reconcile_state
 from .state import BotState, load_state, save_state
 from .strategy import (
@@ -41,15 +46,41 @@ class DcaBot:
     def __init__(self, config: AppConfig, logger: logging.Logger, notifier: Notifier | None = None) -> None:
         self._config = config
         self._logger = logger
-        self._exchange = GrvtExchange(config.credentials, logger)
+        self._exchange = GrvtExchange(
+            config.credentials,
+            logger,
+            private_auth_retry_attempts=config.runtime.private_auth_retry_attempts,
+            private_auth_retry_backoff_seconds=config.runtime.private_auth_retry_backoff_seconds,
+        )
         self._notifier = notifier or build_notifier(config, logger)
         self._startup_notified = False
         self._recovery_notified = False
+        self._last_iteration_error_key: str | None = None
+        self._last_iteration_error_at: float = 0.0
 
     def _notify(self, text: str) -> None:
         result = self._notifier.send(text)
         if not result.delivered and result.detail != "telegram-disabled":
             self._logger.info("Telegram notification not delivered: %s", result.detail)
+
+    def _notify_iteration_failure(self, error: Exception) -> None:
+        now = time.time()
+        error_key = f"{type(error).__name__}:{error}"
+        cooldown = self._config.telegram.error_notification_cooldown_seconds
+        if (
+            self._last_iteration_error_key == error_key
+            and now - self._last_iteration_error_at < cooldown
+        ):
+            self._logger.info(
+                "Suppressing duplicate Telegram error notification within cooldown window. "
+                "cooldown_seconds=%s error=%s",
+                cooldown,
+                error_key,
+            )
+            return
+        self._last_iteration_error_key = error_key
+        self._last_iteration_error_at = now
+        self._notify(format_iteration_failure(self._config.dca.symbol, error))
 
     def _maybe_notify_startup(self, state: BotState) -> None:
         if self._startup_notified:
@@ -107,17 +138,28 @@ class DcaBot:
         save_state(self._config.dca.state_file, state)
 
     def _reconcile_state_with_exchange(self, *, state: BotState, now: datetime) -> BotState:
-        exchange_position = self._exchange.get_open_position(self._config.dca.symbol)
+        try:
+            exchange_position = self._exchange.get_open_position(self._config.dca.symbol)
+            exchange_fills = (
+                self._exchange.get_recent_fills(self._config.dca.symbol)
+                if exchange_position is not None
+                else None
+            )
+        except TransientExchangeError as exc:
+            if state.active_cycle is not None:
+                self._logger.warning(
+                    "Transient exchange error during recovery. "
+                    "Keeping local active cycle for this iteration. error=%s",
+                    exc,
+                )
+                return state
+            raise
         decision = reconcile_state(
             state=state,
             settings=self._config.dca,
             symbol=self._config.dca.symbol,
             exchange_position=exchange_position,
-            exchange_fills=(
-                self._exchange.get_recent_fills(self._config.dca.symbol)
-                if exchange_position is not None
-                else None
-            ),
+            exchange_fills=exchange_fills,
             when=now,
         )
         self._logger.info(decision.message)
@@ -392,5 +434,5 @@ class DcaBot:
                 self.run_once()
             except Exception as exc:
                 self._logger.exception("DCA iteration failed")
-                self._notify(format_iteration_failure(self._config.dca.symbol, exc))
+                self._notify_iteration_failure(exc)
             time.sleep(self._config.runtime.poll_seconds)
