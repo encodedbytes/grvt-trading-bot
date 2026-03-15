@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, ROUND_DOWN
+from http.cookies import SimpleCookie
 import logging
 import random
 import time
@@ -172,6 +174,7 @@ class GrvtExchange:
                     "GRVT private POST returned 401, refreshing auth and retrying once. path=%s",
                     path,
                 )
+                self._client._cookie = None
                 self.ensure_private_auth()
                 return self._client._auth_and_post(path, payload)
             if self._is_transient_request_error(exc):
@@ -184,6 +187,7 @@ class GrvtExchange:
                 path,
                 response,
             )
+            self._client._cookie = None
             self.ensure_private_auth()
             return self._client._auth_and_post(path, payload)
         return response
@@ -231,6 +235,25 @@ class GrvtExchange:
             return True
         return False
 
+    def _sync_sdk_auth_session(self, response: requests.Response) -> None:
+        cookie = SimpleCookie()
+        cookie.load(response.headers.get("Set-Cookie", ""))
+        if "gravity" not in cookie:
+            raise ValueError(f"GRVT auth did not return a session cookie: {response.text[:200]}")
+        expires_at = datetime.strptime(
+            cookie["gravity"]["expires"],
+            "%a, %d %b %Y %H:%M:%S %Z",
+        ).timestamp()
+        account_id = response.headers.get("X-Grvt-Account-Id", "")
+        self._client._cookie = {
+            "gravity": cookie["gravity"].value,
+            "expires": expires_at,
+            "X-Grvt-Account-Id": account_id,
+        }
+        self._client._session.cookies.update({"gravity": cookie["gravity"].value})
+        if account_id:
+            self._client._session.headers.update({"X-Grvt-Account-Id": account_id})
+
     def ensure_private_auth(self) -> None:
         auth_url = get_grvt_endpoint(self._env, "AUTH")
         last_error: Exception | None = None
@@ -259,10 +282,7 @@ class GrvtExchange:
                         time.sleep(self._private_auth_retry_backoff_seconds * attempt)
                         continue
                     raise ValueError(message)
-                if "gravity" not in response.headers.get("Set-Cookie", ""):
-                    raise ValueError(
-                        f"GRVT auth did not return a session cookie: {response.text[:200]}"
-                    )
+                self._sync_sdk_auth_session(response)
                 return
             except Exception as exc:
                 last_error = exc
