@@ -5,25 +5,27 @@ from types import SimpleNamespace
 
 import requests
 
-from gravity_dca.exchange import GrvtExchange, TransientExchangeError
+from gravity_dca.grvt_auth import GrvtPrivateSession
+from gravity_dca.grvt_models import TransientExchangeError
 
 
-def exchange(attempts: int) -> GrvtExchange:
-    instance = GrvtExchange.__new__(GrvtExchange)
-    instance._logger = logging.getLogger("gravity_dca")
-    instance._env = object()
-    instance._api_key = "key"
-    instance._private_auth_retry_attempts = attempts
-    instance._private_auth_retry_backoff_seconds = 0
-    instance._client = SimpleNamespace(
+def auth_session(attempts: int) -> GrvtPrivateSession:
+    client = SimpleNamespace(
         _session=SimpleNamespace(cookies={}, headers={}),
         _cookie=None,
     )
-    return instance
+    return GrvtPrivateSession(
+        env=object(),
+        api_key="key",
+        client=client,
+        logger=logging.getLogger("gravity_dca"),
+        retry_attempts=attempts,
+        retry_backoff_seconds=0,
+    )
 
 
 def test_ensure_private_auth_retries_transient_ssl_errors(monkeypatch) -> None:
-    client = exchange(3)
+    session = auth_session(3)
     calls = {"count": 0}
 
     def fake_post(*args, **kwargs):
@@ -36,39 +38,41 @@ def test_ensure_private_auth_retries_transient_ssl_errors(monkeypatch) -> None:
             text="",
         )
 
-    monkeypatch.setattr("gravity_dca.exchange.requests.post", fake_post)
+    monkeypatch.setattr("gravity_dca.grvt_auth.requests.post", fake_post)
+    monkeypatch.setattr(
+        "gravity_dca.grvt_auth.get_grvt_endpoint",
+        lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login",
+    )
 
-    monkeypatch.setattr("gravity_dca.exchange.get_grvt_endpoint", lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login")
-
-    client.ensure_private_auth()
+    session.ensure_private_auth()
 
     assert calls["count"] == 3
-    assert client._client._cookie is not None
-    assert client._client._session.cookies["gravity"] == "session"
+    assert session._client._cookie is not None
+    assert session._client._session.cookies["gravity"] == "session"
 
 
 def test_ensure_private_auth_raises_transient_exchange_error_after_retries(monkeypatch) -> None:
-    client = exchange(2)
+    session = auth_session(2)
 
     def fake_post(*args, **kwargs):
         raise requests.exceptions.SSLError("unexpected eof")
 
-    monkeypatch.setattr("gravity_dca.exchange.requests.post", fake_post)
+    monkeypatch.setattr("gravity_dca.grvt_auth.requests.post", fake_post)
     monkeypatch.setattr(
-        "gravity_dca.exchange.get_grvt_endpoint",
+        "gravity_dca.grvt_auth.get_grvt_endpoint",
         lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login",
     )
 
     try:
-        client.ensure_private_auth()
+        session.ensure_private_auth()
     except TransientExchangeError as exc:
         assert "private auth failed after 2 attempts" in str(exc)
     else:
         raise AssertionError("TransientExchangeError was not raised")
 
 
-def test_auth_and_post_authenticates_before_private_post(monkeypatch) -> None:
-    client = exchange(1)
+def test_auth_and_post_authenticates_before_private_post() -> None:
+    session = auth_session(1)
     calls: list[str] = []
 
     def fake_ensure_private_auth():
@@ -78,17 +82,17 @@ def test_auth_and_post_authenticates_before_private_post(monkeypatch) -> None:
         calls.append("post")
         return {"ok": True}
 
-    client.ensure_private_auth = fake_ensure_private_auth
-    client._client._auth_and_post = fake_auth_and_post
+    session.ensure_private_auth = fake_ensure_private_auth
+    session._client._auth_and_post = fake_auth_and_post
 
-    result = client._auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
+    result = session.auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
 
     assert result == {"ok": True}
     assert calls == ["auth", "post"]
 
 
-def test_auth_and_post_retries_once_on_401(monkeypatch) -> None:
-    client = exchange(1)
+def test_auth_and_post_retries_once_on_401() -> None:
+    session = auth_session(1)
     calls: list[str] = []
 
     class UnauthorizedError(Exception):
@@ -104,17 +108,17 @@ def test_auth_and_post_retries_once_on_401(monkeypatch) -> None:
             raise UnauthorizedError()
         return {"ok": True}
 
-    client.ensure_private_auth = fake_ensure_private_auth
-    client._client._auth_and_post = fake_auth_and_post
+    session.ensure_private_auth = fake_ensure_private_auth
+    session._client._auth_and_post = fake_auth_and_post
 
-    result = client._auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
+    result = session.auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
 
     assert result == {"ok": True}
     assert calls == ["auth", "post", "auth", "post"]
 
 
 def test_auth_and_post_retries_once_on_unauthenticated_payload() -> None:
-    client = exchange(1)
+    session = auth_session(1)
     calls: list[str] = []
 
     def fake_ensure_private_auth():
@@ -130,17 +134,17 @@ def test_auth_and_post_retries_once_on_unauthenticated_payload() -> None:
             }
         return {"ok": True}
 
-    client.ensure_private_auth = fake_ensure_private_auth
-    client._client._auth_and_post = fake_auth_and_post
+    session.ensure_private_auth = fake_ensure_private_auth
+    session._client._auth_and_post = fake_auth_and_post
 
-    result = client._auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
+    result = session.auth_and_post("https://edge.grvt.io/private", {"hello": "world"})
 
     assert result == {"ok": True}
     assert calls == ["auth", "post", "auth", "post"]
 
 
 def test_ensure_private_auth_updates_sdk_session_headers(monkeypatch) -> None:
-    client = exchange(1)
+    session = auth_session(1)
 
     def fake_post(*args, **kwargs):
         return SimpleNamespace(
@@ -152,15 +156,15 @@ def test_ensure_private_auth_updates_sdk_session_headers(monkeypatch) -> None:
             text="",
         )
 
-    monkeypatch.setattr("gravity_dca.exchange.requests.post", fake_post)
+    monkeypatch.setattr("gravity_dca.grvt_auth.requests.post", fake_post)
     monkeypatch.setattr(
-        "gravity_dca.exchange.get_grvt_endpoint",
+        "gravity_dca.grvt_auth.get_grvt_endpoint",
         lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login",
     )
 
-    client.ensure_private_auth()
+    session.ensure_private_auth()
 
-    assert client._client._cookie is not None
-    assert client._client._cookie["gravity"] == "session"
-    assert client._client._session.cookies["gravity"] == "session"
-    assert client._client._session.headers["X-Grvt-Account-Id"] == "abc123"
+    assert session._client._cookie is not None
+    assert session._client._cookie["gravity"] == "session"
+    assert session._client._session.cookies["gravity"] == "session"
+    assert session._client._session.headers["X-Grvt-Account-Id"] == "abc123"
