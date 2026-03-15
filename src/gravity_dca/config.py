@@ -76,6 +76,8 @@ def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
         return path
     if path.exists():
         return path
+    if path.parent.exists():
+        return path
     if path.parts and path.parts[1:2] == ("state",):
         config_dir = Path(config_path).resolve().parent
         host_state_path = config_dir / "state" / Path(*path.parts[2:])
