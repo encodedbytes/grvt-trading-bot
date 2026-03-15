@@ -46,6 +46,7 @@ make once CONFIG=config.toml
 make run CONFIG=config.toml
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
 make position-config CONFIG=config.toml
+make status CONFIG=config.toml
 make recovery-status CONFIG=config.toml
 make notify-test CONFIG=config.toml
 ```
