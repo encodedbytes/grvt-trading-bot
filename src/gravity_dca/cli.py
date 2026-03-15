@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fetch and print market constraints for a GRVT instrument, for example ETH_USDT_Perp.",
     )
     parser.add_argument(
+        "--position-config",
+        action="store_true",
+        help="Print the current symbol's GRVT initial leverage bounds and margin type.",
+    )
+    parser.add_argument(
         "--thresholds",
         action="store_true",
         help="Print the current active cycle thresholds from the configured state file.",
@@ -76,6 +81,16 @@ def main() -> None:
         print(f"best_bid={snapshot.bid}")
         print(f"best_ask={snapshot.ask}")
         print(f"mid_price={snapshot.mid}")
+        return
+
+    if args.position_config:
+        exchange = build_exchange(config, logging.getLogger("gravity_dca"))
+        details = exchange.get_initial_position_details(config.dca.symbol)
+        print(f"symbol={details.symbol}")
+        print(f"leverage={details.leverage if details.leverage is not None else ''}")
+        print(f"min_leverage={details.min_leverage if details.min_leverage is not None else ''}")
+        print(f"max_leverage={details.max_leverage if details.max_leverage is not None else ''}")
+        print(f"margin_type={details.margin_type if details.margin_type is not None else ''}")
         return
 
     if args.thresholds:
