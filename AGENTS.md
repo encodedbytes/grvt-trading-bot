@@ -45,6 +45,7 @@ make test
 make once CONFIG=config.toml
 make run CONFIG=config.toml
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
+make position-config CONFIG=config.toml
 make recovery-status CONFIG=config.toml
 make notify-test CONFIG=config.toml
 ```
@@ -63,6 +64,9 @@ make docker-down CONTAINER=grvt-dca-eth
 - [config.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.toml)
 - [src/gravity_dca/bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
 - [src/gravity_dca/exchange.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/exchange.py)
+- [src/gravity_dca/grvt_auth.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_auth.py)
+- [src/gravity_dca/grvt_market.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_market.py)
+- [src/gravity_dca/grvt_trading.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_trading.py)
 - [src/gravity_dca/strategy.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/strategy.py)
 - [src/gravity_dca/state.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/state.py)
 
