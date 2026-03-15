@@ -18,6 +18,7 @@ Important behavior:
 - on startup, the bot first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
 - if full reconstruction is not safe, it falls back to position-level recovery
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
+- GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
 
 ## Quick Start
 
@@ -98,6 +99,7 @@ Notes:
 - `take_profit_percent` is based on price move from average entry, not leveraged ROE.
 - `initial_leverage` and `margin_type` are optional.
 - `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
+- private GRVT POST calls also refresh the SDK session cookie on unauthenticated `401` responses before retrying once.
 - Production credentials require `environment = "prod"`.
 
 ## How It Trades
@@ -142,6 +144,7 @@ On startup, the bot reconciles local state against the live GRVT position for th
 - if local state exists but the exchange has no position, it clears the stale local active cycle
 - if both exist and materially disagree, it refuses to continue
 - if recovery hits a transient private-auth or network failure and local active state already exists, it keeps the local cycle for that iteration instead of aborting the poll
+- if a private GRVT request returns an unauthenticated `401` response or payload, the bot refreshes the SDK session cookie and retries once before failing
 
 Full reconstruction restores:
 - side
