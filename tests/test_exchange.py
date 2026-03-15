@@ -15,7 +15,10 @@ def exchange(attempts: int) -> GrvtExchange:
     instance._api_key = "key"
     instance._private_auth_retry_attempts = attempts
     instance._private_auth_retry_backoff_seconds = 0
-    instance._client = SimpleNamespace()
+    instance._client = SimpleNamespace(
+        _session=SimpleNamespace(cookies={}, headers={}),
+        _cookie=None,
+    )
     return instance
 
 
@@ -27,7 +30,11 @@ def test_ensure_private_auth_retries_transient_ssl_errors(monkeypatch) -> None:
         calls["count"] += 1
         if calls["count"] < 3:
             raise requests.exceptions.SSLError("unexpected eof")
-        return SimpleNamespace(ok=True, headers={"Set-Cookie": "gravity=session"}, text="")
+        return SimpleNamespace(
+            ok=True,
+            headers={"Set-Cookie": "gravity=session; expires=Wed, 18 Mar 2026 12:00:00 GMT"},
+            text="",
+        )
 
     monkeypatch.setattr("gravity_dca.exchange.requests.post", fake_post)
 
@@ -36,6 +43,8 @@ def test_ensure_private_auth_retries_transient_ssl_errors(monkeypatch) -> None:
     client.ensure_private_auth()
 
     assert calls["count"] == 3
+    assert client._client._cookie is not None
+    assert client._client._session.cookies["gravity"] == "session"
 
 
 def test_ensure_private_auth_raises_transient_exchange_error_after_retries(monkeypatch) -> None:
@@ -128,3 +137,30 @@ def test_auth_and_post_retries_once_on_unauthenticated_payload() -> None:
 
     assert result == {"ok": True}
     assert calls == ["auth", "post", "auth", "post"]
+
+
+def test_ensure_private_auth_updates_sdk_session_headers(monkeypatch) -> None:
+    client = exchange(1)
+
+    def fake_post(*args, **kwargs):
+        return SimpleNamespace(
+            ok=True,
+            headers={
+                "Set-Cookie": "gravity=session; expires=Wed, 18 Mar 2026 12:00:00 GMT",
+                "X-Grvt-Account-Id": "abc123",
+            },
+            text="",
+        )
+
+    monkeypatch.setattr("gravity_dca.exchange.requests.post", fake_post)
+    monkeypatch.setattr(
+        "gravity_dca.exchange.get_grvt_endpoint",
+        lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login",
+    )
+
+    client.ensure_private_auth()
+
+    assert client._client._cookie is not None
+    assert client._client._cookie["gravity"] == "session"
+    assert client._client._session.cookies["gravity"] == "session"
+    assert client._client._session.headers["X-Grvt-Account-Id"] == "abc123"
