@@ -15,13 +15,13 @@ Python GRVT futures DCA bot with:
 ## Resume Checklist
 
 Before making changes or running the bot again, check:
-- [config.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.toml)
+- [config.toml](config.toml)
 - current state file referenced by `dca.state_file`
 - whether a live container is running
 - whether the exchange already has an open position for the configured symbol
-- [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md) if resuming limit-order work
-- [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md) if resuming Telegram notification work
-- [TASKS_MOMENTUM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_MOMENTUM.md) if resuming momentum strategy work
+- [TASKS.md](TASKS.md) if resuming limit-order work
+- [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md) if resuming Telegram notification work
+- [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md) if resuming momentum strategy work
 - whether current work should happen on a feature branch instead of `main`
 
 ## Current Operational Facts
@@ -65,14 +65,14 @@ make docker-down CONTAINER=grvt-dca-eth
 
 ## Files That Matter Most
 
-- [config.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.toml)
-- [src/gravity_dca/bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
-- [src/gravity_dca/exchange.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/exchange.py)
-- [src/gravity_dca/grvt_auth.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_auth.py)
-- [src/gravity_dca/grvt_market.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_market.py)
-- [src/gravity_dca/grvt_trading.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/grvt_trading.py)
-- [src/gravity_dca/strategy.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/strategy.py)
-- [src/gravity_dca/state.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/state.py)
+- [config.toml](config.toml)
+- [src/gravity_dca/bot.py](src/gravity_dca/bot.py)
+- [src/gravity_dca/exchange.py](src/gravity_dca/exchange.py)
+- [src/gravity_dca/grvt_auth.py](src/gravity_dca/grvt_auth.py)
+- [src/gravity_dca/grvt_market.py](src/gravity_dca/grvt_market.py)
+- [src/gravity_dca/grvt_trading.py](src/gravity_dca/grvt_trading.py)
+- [src/gravity_dca/strategy.py](src/gravity_dca/strategy.py)
+- [src/gravity_dca/state.py](src/gravity_dca/state.py)
 
 ## Safe Defaults
 
