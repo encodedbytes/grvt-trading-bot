@@ -30,16 +30,16 @@ Verified live on GRVT prod:
 ## What Was Delivered
 
 Core files updated:
-- [config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/config.py)
-- [strategy.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/strategy.py)
-- [exchange.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/exchange.py)
-- [bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
-- [cli.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/cli.py)
+- [config.py](src/gravity_dca/config.py)
+- [strategy.py](src/gravity_dca/strategy.py)
+- [exchange.py](src/gravity_dca/exchange.py)
+- [bot.py](src/gravity_dca/bot.py)
+- [cli.py](src/gravity_dca/cli.py)
 
 Operator docs updated:
-- [README.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/README.md)
-- [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md)
-- [config.example.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.example.toml)
+- [README.md](README.md)
+- [AGENTS.md](AGENTS.md)
+- [config.example.toml](config.example.toml)
 
 ## Future Enhancements
 

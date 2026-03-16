@@ -3,9 +3,9 @@
 Python futures DCA bot for GRVT perpetual markets.
 
 Planning documents:
-- [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md)
-- [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md)
-- [TASKS_MOMENTUM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_MOMENTUM.md)
+- [TASKS.md](TASKS.md)
+- [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
+- [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
 
 ## Overview
 
@@ -89,7 +89,7 @@ make test
 
 ## Configuration
 
-Start from [config.example.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.example.toml).
+Start from [config.example.toml](config.example.toml).
 
 The most important settings are:
 - `environment`
@@ -272,10 +272,10 @@ Published tags:
 - A quote budget must satisfy both `min_notional` and `min_size`.
 - Keep `dry_run = true` while changing environment, sizing, leverage, or margin settings.
 - Do not change `margin_type` while a live position is open for that symbol.
-- Current implementation tasks for limit-order support are tracked in [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md).
-- Telegram notification implementation notes are tracked in [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md).
-- Current agent continuity notes are in [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md).
-- GRVT-specific AI skill notes are in [SKILLS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/SKILLS.md).
+- Current implementation tasks for limit-order support are tracked in [TASKS.md](TASKS.md).
+- Telegram notification implementation notes are tracked in [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md).
+- Current agent continuity notes are in [AGENTS.md](AGENTS.md).
+- GRVT-specific AI skill notes are in [SKILLS.md](SKILLS.md).
 
 ## Changing Config Mid-Cycle
 

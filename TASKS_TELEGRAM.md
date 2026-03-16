@@ -34,20 +34,20 @@ Verified live:
 ## What Was Delivered
 
 Core files updated:
-- [config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/config.py)
-- [telegram.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/telegram.py)
-- [bot.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/bot.py)
-- [cli.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/src/gravity_dca/cli.py)
+- [config.py](src/gravity_dca/config.py)
+- [telegram.py](src/gravity_dca/telegram.py)
+- [bot.py](src/gravity_dca/bot.py)
+- [cli.py](src/gravity_dca/cli.py)
 
 Operator docs updated:
-- [config.example.toml](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/config.example.toml)
-- [README.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/README.md)
-- [AGENTS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/AGENTS.md)
-- [Makefile](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/Makefile)
+- [config.example.toml](config.example.toml)
+- [README.md](README.md)
+- [AGENTS.md](AGENTS.md)
+- [Makefile](Makefile)
 
 Tests added:
-- [test_config.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/tests/test_config.py)
-- [test_telegram.py](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/tests/test_telegram.py)
+- [test_config.py](tests/test_config.py)
+- [test_telegram.py](tests/test_telegram.py)
 
 ## Future Enhancements
 
