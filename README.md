@@ -113,6 +113,7 @@ Notes:
 - `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
 - private GRVT POST calls also refresh the SDK session cookie on unauthenticated `401` responses before retrying once.
 - Production credentials require `environment = "prod"`.
+- For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally. This allows configs under subdirectories like `local-configs/` to still use the repo-level `state/` directory.
 
 ## How It Trades
 

@@ -32,6 +32,7 @@ Before making changes or running the bot again, check:
 - Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
+- For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
 - Limit orders that do not fill within `runtime.limit_ttl_seconds` are canceled and do not mutate state.
@@ -47,6 +48,7 @@ make run CONFIG=config.toml
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
 make position-config CONFIG=config.toml
 make status CONFIG=config.toml
+make thresholds CONFIG=config.toml
 make recovery-status CONFIG=config.toml
 make notify-test CONFIG=config.toml
 ```
