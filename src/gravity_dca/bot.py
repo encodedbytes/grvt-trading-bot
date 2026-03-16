@@ -29,6 +29,7 @@ from .strategy import (
 from .telegram import (
     Notifier,
     build_notifier,
+    format_bot_inactive_message,
     format_cycle_summary,
     format_fill_message,
     format_iteration_failure,
@@ -57,6 +58,7 @@ class DcaBot:
         self._recovery_notified = False
         self._last_iteration_error_key: str | None = None
         self._last_iteration_error_at: float = 0.0
+        self._inactive_reason_notified: str | None = None
 
     def _notify(self, text: str) -> None:
         result = self._notifier.send(text)
@@ -89,6 +91,32 @@ class DcaBot:
         if self._config.telegram.send_startup_summary and state.active_cycle is not None:
             self._notify(format_cycle_summary("Active cycle on startup", state.active_cycle))
         self._startup_notified = True
+
+    def _inactive_reason(self, state: BotState) -> str | None:
+        if (
+            state.active_cycle is None
+            and self._config.dca.max_cycles is not None
+            and state.completed_cycles >= self._config.dca.max_cycles
+        ):
+            return "max-cycles-reached"
+        return None
+
+    def _maybe_notify_inactive_state(self, state: BotState) -> None:
+        reason = self._inactive_reason(state)
+        if reason is None:
+            self._inactive_reason_notified = None
+            return
+        if self._inactive_reason_notified == reason:
+            return
+        self._notify(
+            format_bot_inactive_message(
+                symbol=self._config.dca.symbol,
+                reason=reason,
+                completed_cycles=state.completed_cycles,
+                max_cycles=self._config.dca.max_cycles,
+            )
+        )
+        self._inactive_reason_notified = reason
 
     def _submit_order(self, plan) -> str | None:
         response = self._exchange.place_order(
@@ -194,6 +222,7 @@ class DcaBot:
                 "No active cycle and max_cycles reached. completed_cycles=%s",
                 state.completed_cycles,
             )
+            self._maybe_notify_inactive_state(state)
             return False
 
         plan = build_entry_order_plan(
@@ -239,6 +268,7 @@ class DcaBot:
             margin_type=position_config.margin_type,
         )
         self._persist_state(state)
+        self._inactive_reason_notified = None
         self._notify(
             format_fill_message(
                 symbol=plan.symbol,
@@ -298,6 +328,7 @@ class DcaBot:
                 extra_lines=[f"exit_price_reference={close_price}"],
             )
         )
+        self._maybe_notify_inactive_state(state)
         return True
 
     def _handle_safety_order(self, *, state: BotState, cycle, instrument, snapshot) -> bool:
@@ -369,6 +400,7 @@ class DcaBot:
         now = datetime.now(tz=UTC)
         state = self._reconcile_state_with_exchange(state=state, now=now)
         self._maybe_notify_startup(state)
+        self._maybe_notify_inactive_state(state)
         changes = self._exchange.ensure_position_config(
             symbol=self._config.dca.symbol,
             leverage=self._config.dca.initial_leverage,

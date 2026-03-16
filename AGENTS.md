@@ -34,6 +34,7 @@ Before making changes or running the bot again, check:
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
+- When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
 - Limit orders that do not fill within `runtime.limit_ttl_seconds` are canceled and do not mutate state.

@@ -24,6 +24,7 @@ Important behavior:
 - if full reconstruction is not safe, it falls back to position-level recovery
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 - GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
+- when a bot has no active cycle and has reached `max_cycles`, it sends a one-time inactive notification instead of silently going idle
 
 ## Quick Start
 
@@ -155,6 +156,11 @@ State includes:
 - last GRVT order id
 
 Use a unique `state_file` per bot instance.
+
+When `completed_cycles >= max_cycles` and there is no active cycle:
+- the bot keeps running and polling
+- it does not open a new cycle
+- it sends a one-time inactive notification with reason `max-cycles-reached`
 
 On startup, the bot reconciles local state against the live GRVT position for the configured symbol:
 - if local state is missing and a live position exists, it first tries to rebuild the full active cycle from exchange fills
@@ -327,6 +333,7 @@ Supported first-pass notifications:
 - safety order fill
 - take profit fill
 - stop loss fill
+- bot inactive after reaching `max_cycles`
 - limit order timeout and cancel
 - iteration failure
 - leverage or margin config change

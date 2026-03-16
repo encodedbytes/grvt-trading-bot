@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -15,6 +16,7 @@ from gravity_dca.telegram import (
     NullNotifier,
     TelegramNotifier,
     build_notifier,
+    format_bot_inactive_message,
     format_fill_message,
     format_limit_timeout_message,
     format_recovery_message,
@@ -152,11 +154,18 @@ def test_message_formatters_include_key_fields() -> None:
         order_type="market",
     )
     timeout = format_limit_timeout_message("ETH_USDT_Perp", "initial-entry", "123")
+    inactive = format_bot_inactive_message(
+        symbol="ETH_USDT_Perp",
+        reason="max-cycles-reached",
+        completed_cycles=5,
+        max_cycles=5,
+    )
 
     assert "GRVT bot started" in startup
     assert "decision=keep-local" in recovery
     assert "qty=0.5" in fill
     assert "client_order_id=123" in timeout
+    assert "action=no-new-cycles" in inactive
 
 
 def test_bot_sends_startup_and_recovery_notifications_in_dry_run() -> None:
@@ -213,6 +222,32 @@ def test_bot_uses_local_state_when_recovery_has_transient_exchange_error(monkeyp
     assert result is False
     assert any("GRVT bot started" in message for message in fake_notifier.messages)
     assert not any("bot error" in message for message in fake_notifier.messages)
+
+
+def test_bot_notifies_when_max_cycles_reached_inactive() -> None:
+    fake_notifier = FakeNotifier()
+    cfg = replace(config(), dca=replace(config().dca, max_cycles=2))
+    bot = DcaBot.__new__(DcaBot)
+    bot._config = cfg
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange()
+    bot._notifier = fake_notifier
+    bot._startup_notified = False
+    bot._recovery_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+    bot._inactive_reason_notified = None
+
+    state = BotState(active_cycle=None, completed_cycles=2, last_closed_cycle=None)
+
+    bot._maybe_notify_inactive_state(state)
+    bot._maybe_notify_inactive_state(state)
+
+    inactive_messages = [
+        message for message in fake_notifier.messages if "bot inactive" in message
+    ]
+    assert len(inactive_messages) == 1
+    assert "reason=max-cycles-reached" in inactive_messages[0]
 
 
 def test_iteration_failure_notifications_are_deduplicated_within_cooldown() -> None:

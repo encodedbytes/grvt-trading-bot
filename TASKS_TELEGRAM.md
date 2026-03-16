@@ -13,6 +13,7 @@ The bot now supports optional one-way Telegram notifications for:
 - safety order fill
 - take profit fill
 - stop loss fill
+- bot inactive after reaching `max_cycles`
 - limit timeout and cancel
 - iteration failure
 - leverage or margin config changes

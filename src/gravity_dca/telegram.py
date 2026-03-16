@@ -169,3 +169,21 @@ def format_position_config_change(symbol: str, change: str) -> str:
 
 def format_iteration_failure(symbol: str, error: Exception) -> str:
     return "\n".join([f"{symbol} bot error", f"error={type(error).__name__}", str(error)])
+
+
+def format_bot_inactive_message(
+    *,
+    symbol: str,
+    reason: str,
+    completed_cycles: int,
+    max_cycles: int | None,
+) -> str:
+    lines = [
+        f"{symbol} bot inactive",
+        f"reason={reason}",
+        f"completed_cycles={completed_cycles}",
+    ]
+    if max_cycles is not None:
+        lines.append(f"max_cycles={max_cycles}")
+    lines.append("action=no-new-cycles")
+    return "\n".join(lines)
