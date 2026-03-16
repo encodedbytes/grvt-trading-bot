@@ -80,8 +80,12 @@ def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
         return path
     if path.parts and path.parts[1:2] == ("state",):
         config_dir = Path(config_path).resolve().parent
-        host_state_path = config_dir / "state" / Path(*path.parts[2:])
-        return host_state_path
+        relative_state_path = Path("state") / Path(*path.parts[2:])
+        for candidate_dir in (config_dir, *config_dir.parents):
+            candidate = candidate_dir / relative_state_path
+            if candidate.parent.exists():
+                return candidate
+        return config_dir / relative_state_path
     return path
 
 

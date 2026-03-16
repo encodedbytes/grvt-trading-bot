@@ -109,6 +109,41 @@ dry_run = true
     assert config.dca.state_file == tmp_path / "state" / ".gravity-dca-eth.json"
 
 
+def test_load_config_maps_nested_local_config_to_repo_state_dir(tmp_path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "state").mkdir()
+    local_configs_dir = repo_root / "local-configs"
+    local_configs_dir.mkdir()
+    config_path = local_configs_dir / "config.btc.toml"
+    config_path.write_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "BTC_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+state_file = "/state/.gravity-dca-btc.json"
+
+[runtime]
+dry_run = true
+"""
+    )
+
+    config = load_config(config_path)
+
+    assert config.dca.state_file == repo_root / "state" / ".gravity-dca-btc.json"
+
+
 def test_load_config_preserves_container_state_path_when_parent_exists(tmp_path, monkeypatch) -> None:
     state_dir = tmp_path / "state"
     state_dir.mkdir()
