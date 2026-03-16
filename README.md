@@ -2,6 +2,11 @@
 
 Python futures DCA bot for GRVT perpetual markets.
 
+Planning documents:
+- [TASKS.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS.md)
+- [TASKS_TELEGRAM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_TELEGRAM.md)
+- [TASKS_MOMENTUM.md](/Users/gsantovena/Projects/Crypto_Strategies/Gravity/TASKS_MOMENTUM.md)
+
 ## Overview
 
 The bot:
