@@ -1,2 +1,3 @@
 [console_scripts]
 gravity-dca = gravity_dca.cli:main
+gravity-dca-dashboard = gravity_dca.dashboard:main

@@ -38,6 +38,7 @@ class DcaSettings:
 class RuntimeSettings:
     dry_run: bool = True
     poll_seconds: int = 30
+    bot_api_port: int = 8787
     order_fill_timeout_seconds: int = 10
     order_fill_poll_seconds: int = 1
     limit_ttl_seconds: int = 30
@@ -89,13 +90,21 @@ def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
     return path
 
 
-def load_config(path: str | Path) -> AppConfig:
-    raw = tomllib.loads(Path(path).read_text())
-
+def _build_app_config(
+    raw: dict,
+    *,
+    config_path: str | Path,
+    resolve_state_paths: bool,
+) -> AppConfig:
     credentials = raw["credentials"]
     dca = raw["dca"]
     runtime = raw.get("runtime", {})
     telegram = raw.get("telegram", {})
+    state_file = (
+        _resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), config_path)
+        if resolve_state_paths
+        else Path(str(dca.get("state_file", ".gravity-dca-state.json")))
+    )
 
     return AppConfig(
         credentials=GrvtCredentials(
@@ -126,11 +135,12 @@ def load_config(path: str | Path) -> AppConfig:
             safety_order_volume_scale=Decimal(str(dca.get("safety_order_volume_scale", "1"))),
             stop_loss_percent=_optional_decimal(dca.get("stop_loss_percent")),
             max_cycles=int(dca["max_cycles"]) if dca.get("max_cycles") is not None else None,
-            state_file=_resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), path),
+            state_file=state_file,
         ),
         runtime=RuntimeSettings(
             dry_run=bool(runtime.get("dry_run", True)),
             poll_seconds=int(runtime.get("poll_seconds", 30)),
+            bot_api_port=int(runtime.get("bot_api_port", 8787)),
             order_fill_timeout_seconds=int(runtime.get("order_fill_timeout_seconds", 10)),
             order_fill_poll_seconds=int(runtime.get("order_fill_poll_seconds", 1)),
             limit_ttl_seconds=int(runtime.get("limit_ttl_seconds", 30)),
@@ -161,3 +171,21 @@ def load_config(path: str | Path) -> AppConfig:
             ),
         ),
     )
+
+
+def load_config_text(
+    raw_text: str,
+    *,
+    config_path: str | Path = "<memory>",
+    resolve_state_paths: bool = True,
+) -> AppConfig:
+    raw = tomllib.loads(raw_text)
+    return _build_app_config(
+        raw,
+        config_path=config_path,
+        resolve_state_paths=resolve_state_paths,
+    )
+
+
+def load_config(path: str | Path) -> AppConfig:
+    return load_config_text(Path(path).read_text(), config_path=path)
