@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 import time
 
+from .bot_api import BotApiServer, build_shared_status
 from .config import AppConfig
 from .exchange import (
     FillReport,
@@ -47,6 +48,7 @@ class DcaBot:
     def __init__(self, config: AppConfig, logger: logging.Logger, notifier: Notifier | None = None) -> None:
         self._config = config
         self._logger = logger
+        self._shared_status = build_shared_status(config, logger)
         self._exchange = GrvtExchange(
             config.credentials,
             logger,
@@ -396,6 +398,8 @@ class DcaBot:
         return True
 
     def run_once(self) -> bool:
+        started_at = datetime.now(tz=UTC).isoformat()
+        self._shared_status.mark_iteration_started(started_at)
         state = load_state(self._config.dca.state_file)
         now = datetime.now(tz=UTC)
         state = self._reconcile_state_with_exchange(state=state, now=now)
@@ -414,12 +418,14 @@ class DcaBot:
         snapshot = self._exchange.get_market_snapshot(self._config.dca.symbol)
 
         if state.active_cycle is None:
-            return self._handle_initial_entry(
+            changed = self._handle_initial_entry(
                 state=state,
                 now=now,
                 instrument=instrument,
                 snapshot=snapshot,
             )
+            self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
+            return changed
 
         cycle = state.active_cycle
         self._logger.info(
@@ -432,39 +438,51 @@ class DcaBot:
         )
 
         if should_take_profit(cycle, snapshot, self._config.dca):
-            return self._handle_exit(
+            changed = self._handle_exit(
                 state=state,
                 cycle=cycle,
                 snapshot=snapshot,
                 now=now,
                 reason="take-profit",
             )
+            self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
+            return changed
 
         if should_stop_loss(cycle, snapshot, self._config.dca):
-            return self._handle_exit(
+            changed = self._handle_exit(
                 state=state,
                 cycle=cycle,
                 snapshot=snapshot,
                 now=now,
                 reason="stop-loss",
             )
+            self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
+            return changed
 
         if should_place_safety_order(cycle, snapshot, self._config.dca):
-            return self._handle_safety_order(
+            changed = self._handle_safety_order(
                 state=state,
                 cycle=cycle,
                 instrument=instrument,
                 snapshot=snapshot,
             )
+            self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
+            return changed
 
         self._logger.info("No action taken this iteration.")
+        self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
         return False
 
     def run_forever(self) -> None:
-        while True:
-            try:
-                self.run_once()
-            except Exception as exc:
-                self._logger.exception("DCA iteration failed")
-                self._notify_iteration_failure(exc)
-            time.sleep(self._config.runtime.poll_seconds)
+        with BotApiServer(self._shared_status, port=self._config.runtime.bot_api_port):
+            while True:
+                try:
+                    self.run_once()
+                except Exception as exc:
+                    self._shared_status.mark_iteration_failed(
+                        datetime.now(tz=UTC).isoformat(),
+                        exc,
+                    )
+                    self._logger.exception("DCA iteration failed")
+                    self._notify_iteration_failure(exc)
+                time.sleep(self._config.runtime.poll_seconds)

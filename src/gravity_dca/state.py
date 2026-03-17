@@ -181,7 +181,11 @@ def _decode_closed_cycle(payload: dict | None) -> ClosedCycleState | None:
 def load_state(path: Path) -> BotState:
     if not path.exists():
         return BotState()
-    payload = json.loads(path.read_text())
+    return load_state_text(path.read_text())
+
+
+def load_state_text(raw_text: str) -> BotState:
+    payload = json.loads(raw_text)
     return BotState(
         active_cycle=_decode_active_cycle(payload.get("active_cycle")),
         completed_cycles=int(payload.get("completed_cycles", 0)),

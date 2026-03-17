@@ -27,6 +27,7 @@ Before making changes or running the bot again, check:
 ## Current Operational Facts
 
 - The bot supports `market` and aggressive `limit` orders for entries and exits.
+- Each long-running bot exposes a tiny read-only local API with `/health` and `/status`; `runtime.bot_api_port` defaults to `8787`.
 - Telegram notifications are optional and one-way only.
 - Take profit is price-based, not ROE-based.
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
@@ -34,6 +35,7 @@ Before making changes or running the bot again, check:
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
+- The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.
@@ -47,6 +49,7 @@ make install
 make test
 make once CONFIG=config.toml
 make run CONFIG=config.toml
+make dashboard
 make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp
 make position-config CONFIG=config.toml
 make status CONFIG=config.toml
@@ -62,6 +65,10 @@ make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-logs CONTAINER=grvt-dca-eth
 make docker-down CONTAINER=grvt-dca-eth
+make dashboard-docker-build
+make dashboard-docker-up
+make dashboard-docker-logs
+make dashboard-docker-down
 ```
 
 ## Files That Matter Most
@@ -74,6 +81,9 @@ make docker-down CONTAINER=grvt-dca-eth
 - [src/gravity_dca/grvt_trading.py](src/gravity_dca/grvt_trading.py)
 - [src/gravity_dca/strategy.py](src/gravity_dca/strategy.py)
 - [src/gravity_dca/state.py](src/gravity_dca/state.py)
+- [src/gravity_dca/bot_api.py](src/gravity_dca/bot_api.py)
+- [src/gravity_dca/status_snapshot.py](src/gravity_dca/status_snapshot.py)
+- [src/gravity_dca/dashboard.py](src/gravity_dca/dashboard.py)
 
 ## Safe Defaults
 

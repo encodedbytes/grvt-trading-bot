@@ -5,6 +5,8 @@ services:
     container_name: gravity-dca
     restart: unless-stopped
     command: ["--config", "/app/config.toml"]
+    expose:
+      - "8787"
     volumes:
       - ./config.toml:/app/config.toml:ro
       - ./state:/state

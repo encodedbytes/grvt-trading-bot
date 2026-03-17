@@ -78,6 +78,36 @@ limit_ttl_seconds = 45
     assert config.runtime.limit_ttl_seconds == 45
 
 
+def test_load_config_reads_bot_api_port(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+dry_run = true
+bot_api_port = 8899
+"""
+    )
+
+    config = load_config(config_path)
+
+    assert config.runtime.bot_api_port == 8899
+
+
 def test_load_config_maps_container_state_path_to_local_state_dir(tmp_path) -> None:
     (tmp_path / "state").mkdir()
     config_path = tmp_path / "config.toml"

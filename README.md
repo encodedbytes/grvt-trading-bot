@@ -25,6 +25,7 @@ Important behavior:
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 - GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
 - when a bot has no active cycle and has reached `max_cycles`, it sends a one-time inactive notification instead of silently going idle
+- each long-running bot exposes a tiny read-only local API for health and status
 
 ## Quick Start
 
@@ -82,10 +83,23 @@ Run continuously:
 make run CONFIG=config.toml
 ```
 
+Run the local web dashboard for Docker-managed bots:
+
+```bash
+make dashboard
+```
+
 Run tests:
 
 ```bash
 make test
+```
+
+Run the dashboard in Docker:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-run
 ```
 
 ## Configuration
@@ -109,6 +123,7 @@ The most important settings are:
 - `stop_loss_percent`
 - `dry_run`
 - `state_file`
+- `runtime.bot_api_port`
 
 Notes:
 - `initial_quote_amount` and `safety_order_quote_amount` are quote-currency budgets, not base size.
@@ -117,6 +132,7 @@ Notes:
 - `take_profit_percent` is based on price move from average entry, not leveraged ROE.
 - `initial_leverage` and `margin_type` are optional.
 - `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
+- `runtime.bot_api_port` controls the bot-local read-only API port and defaults to `8787`.
 - private GRVT POST calls also refresh the SDK session cookie on unauthenticated `401` responses before retrying once.
 - Production credentials require `environment = "prod"`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally. This allows configs under subdirectories like `local-configs/` to still use the repo-level `state/` directory.
@@ -202,6 +218,12 @@ Build the image:
 make docker-build
 ```
 
+Build the dashboard image:
+
+```bash
+make dashboard-docker-build
+```
+
 For Docker, mount a writable `state/` directory and point `state_file` to `/state/...`, for example:
 
 ```toml
@@ -236,11 +258,98 @@ Stop it:
 make docker-down CONTAINER=grvt-dca-eth
 ```
 
+The default bot image exposes container port `8787` for the read-only bot API. If you change `runtime.bot_api_port`, the bot listens on that configured container port instead. The standard Make and Compose workflows keep the bot API internal to the Docker network and do not publish it to the host by default.
+
+## Web Dashboard
+
+The repo includes a local read-only monitoring dashboard for running bot containers.
+
+Each long-running bot now also serves a tiny read-only local API inside its own process. The dashboard prefers this API for bot configuration and local state, and falls back to Docker-based inspection when the API is not reachable.
+
+What it shows:
+- running bot containers discovered from Docker
+- mounted config and state file paths
+- symbol, environment, order type, dry-run mode, and configured leverage
+- active cycle summary with entry, quantity, TP, SL, and next safety trigger
+- completed cycle count and last closed cycle summary
+- recent error line and most recent log line from each container
+- clickable per-bot detail panel with live log tailing
+- configurable card layout with `Vertical` and `Horizontal` views
+- keyboard shortcut support for `Esc` to close the detail drawer
+
+It does not:
+- place trades
+- call the exchange
+
+Bot-local API:
+- endpoint: `GET /health`
+- endpoint: `GET /status`
+- bind: `0.0.0.0:<runtime.bot_api_port>` inside the bot container
+- default port: `8787`
+- purpose: expose the bot's already-loaded config, local state, thresholds, lifecycle, and recent iteration error state
+
+`GET /status` response includes:
+- symbol and environment
+- order type, dry-run mode, state file, configured leverage, and margin type
+- lifecycle state and completed/max cycles
+- active cycle summary
+- TP, SL, and next safety trigger thresholds
+- last closed cycle summary when present
+- runtime status timestamps and the most recent iteration error when present
+
+Notes:
+- the bot API is read-only
+- the default bot API port is `8787`
+- set `runtime.bot_api_port` per bot when you need multiple host-side bot processes on the same machine
+- the Make and Compose flows do not publish that port to the host by default
+- the dashboard reads each bot's configured API port from its config and connects to that port on the container network when available
+- the dashboard can reach the bot API when it runs on the same Docker network or bridge; otherwise it falls back to Docker-based inspection
+
+Run it locally:
+
+```bash
+make dashboard
+```
+
+Run it in Docker:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-run
+```
+
+Run it in Docker in the background:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-up
+make dashboard-docker-logs
+```
+
+Stop the dashboard container:
+
+```bash
+make dashboard-docker-down
+```
+
+The dashboard container needs access to the host Docker socket so it can inspect running bot containers and tail their logs:
+
+```bash
+-v /var/run/docker.sock:/var/run/docker.sock
+```
+
+By default the dashboard image listens on `0.0.0.0:8080`, and the Make targets publish that as `http://localhost:8080`.
+- modify config or state
+
+Default address:
+- `http://127.0.0.1:8080`
+
 ## Commands
 
 Local:
 - `make once CONFIG=config.toml`
 - `make run CONFIG=config.toml`
+- `make dashboard`
 - `make instrument CONFIG=config.toml SYMBOL=ETH_USDT_Perp`
 - `make position-config CONFIG=config.toml`
 - `make status CONFIG=config.toml`
@@ -256,6 +365,11 @@ Docker:
 - `make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth`
 - `make docker-logs CONTAINER=grvt-dca-eth`
 - `make docker-down CONTAINER=grvt-dca-eth`
+- `make dashboard-docker-build`
+- `make dashboard-docker-run`
+- `make dashboard-docker-up`
+- `make dashboard-docker-logs`
+- `make dashboard-docker-down`
 
 ## Docker Hub CI
 

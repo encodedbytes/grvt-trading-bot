@@ -11,7 +11,7 @@ COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
 
-EXPOSE 8787
+EXPOSE 8080
 
-ENTRYPOINT ["gravity-dca"]
-CMD ["--config", "/app/config.toml"]
+ENTRYPOINT ["gravity-dca-dashboard"]
+CMD ["--host", "0.0.0.0", "--port", "8080"]

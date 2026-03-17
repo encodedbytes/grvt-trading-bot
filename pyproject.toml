@@ -19,6 +19,7 @@ dev = [
 
 [project.scripts]
 gravity-dca = "gravity_dca.cli:main"
+gravity-dca-dashboard = "gravity_dca.dashboard:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
