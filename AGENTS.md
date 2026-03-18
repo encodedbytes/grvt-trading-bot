@@ -66,6 +66,7 @@ make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-logs CONTAINER=grvt-dca-eth
 make docker-down CONTAINER=grvt-dca-eth
 make dashboard-docker-build
+make dashboard-docker-run
 make dashboard-docker-up
 make dashboard-docker-logs
 make dashboard-docker-down

@@ -280,6 +280,7 @@ What it shows:
 It does not:
 - place trades
 - call the exchange
+- modify config or state
 
 Bot-local API:
 - endpoint: `GET /health`
@@ -339,7 +340,6 @@ The dashboard container needs access to the host Docker socket so it can inspect
 ```
 
 By default the dashboard image listens on `0.0.0.0:8080`, and the Make targets publish that as `http://localhost:8080`.
-- modify config or state
 
 Default address:
 - `http://127.0.0.1:8080`
