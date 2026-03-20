@@ -127,6 +127,8 @@ Closed position state should track:
 
 ### Phase 1: Candle Data Support
 
+Status: implemented
+
 Goal:
 - support OHLCV or equivalent candle-history reads for momentum indicators
 
@@ -139,7 +141,16 @@ Tasks:
 Completion criteria:
 - bot can fetch recent candles for one symbol and timeframe
 
+Delivered:
+- added exchange-neutral `Candle` model
+- added `GrvtMarketData.get_candles(...)`
+- added `GrvtExchange.get_candles(...)`
+- verified installed GRVT SDK exposes `fetch_ohlcv(...)` with CCXT-style timeframe support
+- added parsing and transient-error tests
+
 ### Phase 2: Indicator Layer
+
+Status: implemented
 
 Goal:
 - compute the exact indicators required for the first momentum strategy
@@ -153,6 +164,14 @@ Tasks:
 
 Completion criteria:
 - deterministic unit tests for indicator outputs
+
+Delivered:
+- added pure indicator helpers in `gravity_dca.indicators`
+- implemented EMA with SMA seeding
+- implemented true range and Wilder ATR
+- implemented Wilder ADX
+- implemented highest-close helper with optional latest-candle offset
+- added deterministic unit tests for indicator values and validation paths
 
 ### Phase 3: Config Model
 

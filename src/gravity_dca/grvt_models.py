@@ -34,6 +34,21 @@ class InstrumentMeta:
 
 
 @dataclass(frozen=True)
+class Candle:
+    symbol: str
+    open_time: int
+    close_time: int
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: Decimal
+    quote_volume: Decimal
+    trades: int
+    raw: dict | None = None
+
+
+@dataclass(frozen=True)
 class FillReport:
     order_id: str
     client_order_id: str

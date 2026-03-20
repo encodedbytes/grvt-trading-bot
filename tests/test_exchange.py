@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from decimal import Decimal
 
 import requests
 
+from gravity_dca.grvt_market import GrvtMarketData
 from gravity_dca.grvt_auth import GrvtPrivateSession
 from gravity_dca.grvt_models import TransientExchangeError
 
@@ -168,3 +170,72 @@ def test_ensure_private_auth_updates_sdk_session_headers(monkeypatch) -> None:
     assert session._client._cookie["gravity"] == "session"
     assert session._client._session.cookies["gravity"] == "session"
     assert session._client._session.headers["X-Grvt-Account-Id"] == "abc123"
+
+
+def test_get_candles_parses_and_sorts_results() -> None:
+    client = SimpleNamespace(
+        fetch_ohlcv=lambda **kwargs: {
+            "result": [
+                {
+                    "instrument": "ETH_USDT_Perp",
+                    "open_time": "200",
+                    "close_time": "299",
+                    "open": "2010.0",
+                    "high": "2020.0",
+                    "low": "2005.0",
+                    "close": "2015.0",
+                    "volume_u": "1.4",
+                    "volume_q": "2821.0",
+                    "trades": "11",
+                },
+                {
+                    "instrument": "ETH_USDT_Perp",
+                    "open_time": "100",
+                    "close_time": "199",
+                    "open": "2000.0",
+                    "high": "2012.0",
+                    "low": "1995.0",
+                    "close": "2010.0",
+                    "volume_u": "1.2",
+                    "volume_q": "2412.0",
+                    "trades": "9",
+                },
+            ]
+        }
+    )
+    auth = SimpleNamespace(is_transient_request_error=lambda exc: False)
+    market = GrvtMarketData(client=client, auth=auth, logger=logging.getLogger("gravity_dca"))
+
+    candles = market.get_candles("ETH_USDT_Perp", timeframe="5m", limit=2)
+
+    assert [candle.open_time for candle in candles] == [100, 200]
+    assert candles[0].symbol == "ETH_USDT_Perp"
+    assert candles[0].open == Decimal("2000.0")
+    assert candles[0].high == Decimal("2012.0")
+    assert candles[0].low == Decimal("1995.0")
+    assert candles[0].close == Decimal("2010.0")
+    assert candles[0].volume == Decimal("1.2")
+    assert candles[0].quote_volume == Decimal("2412.0")
+    assert candles[0].trades == 9
+
+
+def test_get_candles_wraps_transient_exchange_errors() -> None:
+    class FakeClient:
+        def fetch_ohlcv(self, **kwargs):
+            raise requests.exceptions.SSLError("temporary ssl failure")
+
+    auth = SimpleNamespace(
+        is_transient_request_error=lambda exc: isinstance(exc, requests.exceptions.SSLError)
+    )
+    market = GrvtMarketData(
+        client=FakeClient(),
+        auth=auth,
+        logger=logging.getLogger("gravity_dca"),
+    )
+
+    try:
+        market.get_candles("ETH_USDT_Perp", timeframe="5m")
+    except TransientExchangeError as exc:
+        assert "GRVT fetch_ohlcv failed for ETH_USDT_Perp timeframe=5m" in str(exc)
+    else:
+        raise AssertionError("TransientExchangeError was not raised")
