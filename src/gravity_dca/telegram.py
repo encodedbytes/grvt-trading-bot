@@ -133,11 +133,14 @@ def format_recovery_message(symbol: str, decision: RecoveryDecision) -> str:
     ]
     if decision.reconstruction_message is not None:
         lines.append(f"reconstruction={decision.reconstruction_message}")
-    if decision.recovered_cycle is not None:
-        lines.append(
-            "completed_safety_orders="
-            f"{decision.recovered_cycle.completed_safety_orders}"
-        )
+    recovered_cycle = getattr(decision, "recovered_cycle", None)
+    if recovered_cycle is not None:
+        lines.append(f"completed_safety_orders={recovered_cycle.completed_safety_orders}")
+    recovered_position = getattr(decision, "recovered_position", None)
+    if recovered_position is not None:
+        lines.append(f"qty={recovered_position.total_quantity}")
+        if recovered_position.trailing_stop_price is not None:
+            lines.append(f"trailing_stop_price={recovered_position.trailing_stop_price}")
     return "\n".join(lines)
 
 

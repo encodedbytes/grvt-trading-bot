@@ -268,6 +268,8 @@ Delivered:
 
 ### Phase 7: Recovery
 
+Status: implemented
+
 Goal:
 - make momentum restart-safe
 
@@ -279,6 +281,14 @@ Tasks:
 
 Completion criteria:
 - restart tests pass with missing local state and live exchange position
+
+Delivered:
+- added momentum-specific recovery in `gravity_dca.momentum_recovery`
+- reconciles local momentum state against live exchange position before each momentum iteration
+- rebuilds local active position from exchange position and reuses recent fill metadata when possible
+- recomputes trailing-stop state from current ATR-backed indicator context on recovery
+- preserves local active state on transient exchange recovery errors for the current iteration
+- added recovery tests for rebuild, keep-local refresh, stale-local clear, and mismatch failure paths
 
 ### Phase 8: CLI and Operator Tooling
 

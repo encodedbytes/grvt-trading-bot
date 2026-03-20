@@ -6,7 +6,8 @@ import time
 
 from .bot_api import BotApiServer, build_shared_status
 from .config import AppConfig
-from .exchange import FillReport, GrvtExchange, PositionConfig
+from .exchange import FillReport, GrvtExchange, PositionConfig, TransientExchangeError
+from .momentum_recovery import reconcile_momentum_state
 from .momentum_state import MomentumBotState, load_momentum_state, save_momentum_state
 from .momentum_strategy import (
     build_indicator_snapshot,
@@ -30,6 +31,7 @@ from .telegram import (
     format_iteration_failure,
     format_limit_timeout_message,
     format_position_config_change,
+    format_recovery_message,
     format_startup_message,
 )
 
@@ -52,6 +54,7 @@ class MomentumBot:
         )
         self._notifier = notifier or build_notifier(config, logger)
         self._startup_notified = False
+        self._recovery_notified = False
         self._last_iteration_error_key: str | None = None
         self._last_iteration_error_at: float = 0.0
 
@@ -93,6 +96,64 @@ class MomentumBot:
 
     def _persist_state(self, state: MomentumBotState) -> None:
         save_momentum_state(self._settings.state_file, state)
+
+    def _reconcile_state_with_exchange(
+        self,
+        *,
+        state: MomentumBotState,
+        now: datetime,
+        candles,
+    ) -> MomentumBotState:
+        try:
+            exchange_position = self._exchange.get_open_position(self._settings.symbol)
+            exchange_fills = (
+                self._exchange.get_recent_fills(self._settings.symbol)
+                if exchange_position is not None
+                else None
+            )
+        except TransientExchangeError as exc:
+            if state.active_position is not None:
+                self._logger.warning(
+                    "Transient exchange error during momentum recovery. "
+                    "Keeping local active position for this iteration. error=%s",
+                    exc,
+                )
+                return state
+            raise
+        decision = reconcile_momentum_state(
+            state=state,
+            settings=self._settings,
+            symbol=self._settings.symbol,
+            exchange_position=exchange_position,
+            exchange_fills=exchange_fills,
+            candles=candles,
+            when=now,
+        )
+        self._logger.info(decision.message)
+        if decision.reconstruction_message is not None:
+            self._logger.info(
+                "Momentum recovery reconstruction attempted=%s succeeded=%s details=%s",
+                decision.reconstruction_attempted,
+                decision.reconstruction_succeeded,
+                decision.reconstruction_message,
+            )
+        if not self._recovery_notified:
+            self._notify(format_recovery_message(self._settings.symbol, decision))
+            self._recovery_notified = True
+        if decision.action == "keep-local":
+            if decision.recovered_position is not None:
+                state.replace_active_position(decision.recovered_position)
+                self._persist_state(state)
+            return state
+        if decision.action in {"rebuild-from-exchange", "rebuild-from-exchange-history"}:
+            state.replace_active_position(decision.recovered_position)
+            self._persist_state(state)
+            return state
+        if decision.action == "clear-stale-local":
+            state.replace_active_position(None)
+            self._persist_state(state)
+            return state
+        return state
 
     def _submit_order(self, plan: OrderPlan) -> str | None:
         response = self._exchange.place_order(
@@ -209,6 +270,7 @@ class MomentumBot:
         started_at = datetime.now(tz=UTC).isoformat()
         self._shared_status.mark_iteration_started(started_at)
         state = load_momentum_state(self._settings.state_file)
+        now = datetime.now(tz=UTC)
         self._maybe_notify_startup()
         changes = self._exchange.ensure_position_config(
             symbol=self._settings.symbol,
@@ -222,6 +284,7 @@ class MomentumBot:
         instrument = self._exchange.get_instrument(self._settings.symbol)
         snapshot = self._exchange.get_market_snapshot(self._settings.symbol)
         candles = self._fetch_candles()
+        state = self._reconcile_state_with_exchange(state=state, now=now, candles=candles)
 
         if state.active_position is None:
             decision = evaluate_entry(candles, self._settings, state)
@@ -242,7 +305,7 @@ class MomentumBot:
             state.open_position(
                 symbol=plan.symbol,
                 side=plan.side,
-                when=datetime.now(tz=UTC),
+                when=now,
                 quantity=report.traded_size,
                 price=report.avg_fill_price,
                 order_id=report.order_id,
@@ -312,7 +375,7 @@ class MomentumBot:
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return metadata_changed
         state.close_position(
-            when=datetime.now(tz=UTC),
+            when=now,
             exit_reason=plan.reason,
             exit_price=report.avg_fill_price,
         )

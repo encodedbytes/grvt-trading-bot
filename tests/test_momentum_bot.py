@@ -61,9 +61,10 @@ class FakeNotifier:
 
 
 class FakeExchange:
-    def __init__(self, candles, report: FillReport | None = None) -> None:
+    def __init__(self, candles, report: FillReport | None = None, open_position=None) -> None:
         self._candles = candles
         self._report = report
+        self._open_position = open_position
         self.placed_orders: list[dict] = []
 
     def get_candles(self, symbol: str, *, timeframe: str, limit: int):
@@ -89,6 +90,12 @@ class FakeExchange:
             mid=self._candles[-1].close - Decimal("0.01"),
             last=self._candles[-1].close,
         )
+
+    def get_open_position(self, symbol: str):
+        return self._open_position
+
+    def get_recent_fills(self, symbol: str):
+        return []
 
     def round_amount(self, amount: Decimal, base_decimals: int) -> Decimal:
         quantum = Decimal("1").scaleb(-base_decimals)
@@ -167,6 +174,7 @@ def test_momentum_bot_enters_in_dry_run_without_persisting(monkeypatch) -> None:
     bot._notifier = fake_notifier
     bot._shared_status = build_shared_status(bot._config, bot._logger)
     bot._startup_notified = False
+    bot._recovery_notified = False
     bot._last_iteration_error_key = None
     bot._last_iteration_error_at = 0.0
 
@@ -197,6 +205,7 @@ def test_momentum_bot_persists_entry_fill(monkeypatch) -> None:
     bot._notifier = fake_notifier
     bot._shared_status = build_shared_status(bot._config, bot._logger)
     bot._startup_notified = False
+    bot._recovery_notified = False
     bot._last_iteration_error_key = None
     bot._last_iteration_error_at = 0.0
 
@@ -241,10 +250,26 @@ def test_momentum_bot_persists_exit_fill(monkeypatch) -> None:
     bot = MomentumBot.__new__(MomentumBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
-    bot._exchange = FakeExchange(trend_failure_candles(), report=report)
+    bot._exchange = FakeExchange(
+        trend_failure_candles(),
+        report=report,
+        open_position=type(
+            "Position",
+            (),
+            {
+                "symbol": "ETH_USDT_Perp",
+                "side": "buy",
+                "size": Decimal("1"),
+                "average_entry_price": Decimal("12.0"),
+                "leverage": Decimal("5"),
+                "margin_type": "CROSS",
+            },
+        )(),
+    )
     bot._notifier = fake_notifier
     bot._shared_status = build_shared_status(bot._config, bot._logger)
     bot._startup_notified = False
+    bot._recovery_notified = False
     bot._last_iteration_error_key = None
     bot._last_iteration_error_at = 0.0
 
