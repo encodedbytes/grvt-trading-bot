@@ -175,6 +175,8 @@ Delivered:
 
 ### Phase 3: Config Model
 
+Status: implemented
+
 Goal:
 - add config parsing for the momentum strategy
 
@@ -186,6 +188,14 @@ Tasks:
 
 Completion criteria:
 - config parsing tests pass for valid and invalid momentum configs
+
+Delivered:
+- added `MomentumSettings` config dataclass
+- added config parsing for flat `[momentum]` configs
+- added compatibility parsing for selector-style `[strategy] type = "momentum"` with `[strategy.momentum]`
+- kept legacy DCA configs unchanged and operational
+- added `config.momentum.example.toml`
+- added valid and invalid momentum config parsing tests
 
 ### Phase 4: State Model
 

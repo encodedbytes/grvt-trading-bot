@@ -7,6 +7,9 @@ Planning documents:
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
 
+Momentum strategy config example:
+- [config.momentum.example.toml](config.momentum.example.toml)
+
 ## Overview
 
 The bot:
@@ -105,6 +108,8 @@ make dashboard-docker-run
 ## Configuration
 
 Start from [config.example.toml](config.example.toml).
+
+Momentum planning and config prototyping can start from [config.momentum.example.toml](config.momentum.example.toml). The live trading/runtime path is still DCA-only until the momentum bot phases are completed.
 
 The most important settings are:
 - `environment`
