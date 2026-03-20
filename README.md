@@ -109,7 +109,7 @@ make dashboard-docker-run
 
 Start from [config.example.toml](config.example.toml).
 
-Momentum planning and config prototyping can start from [config.momentum.example.toml](config.momentum.example.toml). The live trading/runtime path is still DCA-only until the momentum bot phases are completed.
+Momentum configs can start from [config.momentum.example.toml](config.momentum.example.toml). The repo now supports both DCA and momentum bot runs; momentum currently includes runtime execution, recovery, and CLI diagnostics, while broader operator/docs polish remains incremental.
 
 The most important settings are:
 - `environment`

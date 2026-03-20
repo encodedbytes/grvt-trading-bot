@@ -292,6 +292,8 @@ Delivered:
 
 ### Phase 8: CLI and Operator Tooling
 
+Status: implemented
+
 Goal:
 - expose momentum state and diagnostics from the command line
 
@@ -302,6 +304,13 @@ Tasks:
 
 Completion criteria:
 - operator commands work for both DCA and momentum flows
+
+Delivered:
+- added momentum-aware `status` output in `gravity_dca.cli`
+- added momentum-aware `thresholds` output in `gravity_dca.cli`
+- added momentum-aware `recovery-status` output in `gravity_dca.cli`
+- included current indicator and stop metadata in momentum status reporting
+- added CLI tests covering momentum operator commands
 
 ### Phase 9: Documentation
 

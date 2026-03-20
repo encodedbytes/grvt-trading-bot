@@ -6,6 +6,9 @@ import logging
 
 from .bot import DcaBot
 from .momentum_bot import MomentumBot
+from .momentum_recovery import reconcile_momentum_state
+from .momentum_state import load_momentum_state
+from .momentum_strategy import build_indicator_snapshot, fixed_take_profit_price
 from .config import load_config
 from .exchange import GrvtExchange, TransientExchangeError
 from .telegram import build_notifier, configured_symbol
@@ -27,6 +30,14 @@ def build_exchange(config, logger: logging.Logger) -> GrvtExchange:
         logger,
         private_auth_retry_attempts=config.runtime.private_auth_retry_attempts,
         private_auth_retry_backoff_seconds=config.runtime.private_auth_retry_backoff_seconds,
+    )
+
+
+def momentum_candle_limit(settings) -> int:
+    return max(
+        100,
+        settings.ema_slow_period + settings.breakout_lookback + 5,
+        (settings.adx_period * 2) + 5,
     )
 
 
@@ -105,7 +116,97 @@ def main() -> None:
 
     if args.status:
         if configured_strategy_type(config) == "momentum":
-            raise SystemExit("Momentum status CLI is planned for Phase 8 and is not implemented yet.")
+            exchange = build_exchange(config, logging.getLogger("gravity_dca"))
+            state = load_momentum_state(config.momentum.state_file)
+            print(f"state_file={config.momentum.state_file}")
+            print(f"symbol={config.momentum.symbol}")
+            print(f"configured_side={config.momentum.side}")
+            print(f"order_type={config.momentum.order_type}")
+            print(f"dry_run={'true' if config.runtime.dry_run else 'false'}")
+            details = exchange.get_initial_position_details(config.momentum.symbol)
+            print(f"initial_leverage={details.leverage if details.leverage is not None else ''}")
+            print(f"min_leverage={details.min_leverage if details.min_leverage is not None else ''}")
+            print(f"max_leverage={details.max_leverage if details.max_leverage is not None else ''}")
+            print(f"margin_type={details.margin_type if details.margin_type is not None else ''}")
+            try:
+                candles = exchange.get_candles(
+                    config.momentum.symbol,
+                    timeframe=config.momentum.timeframe,
+                    limit=momentum_candle_limit(config.momentum),
+                )
+                exchange_position = exchange.get_open_position(config.momentum.symbol)
+                exchange_fills = (
+                    exchange.get_recent_fills(config.momentum.symbol)
+                    if exchange_position is not None
+                    else None
+                )
+                decision = reconcile_momentum_state(
+                    state=state,
+                    settings=config.momentum,
+                    symbol=config.momentum.symbol,
+                    exchange_position=exchange_position,
+                    exchange_fills=exchange_fills,
+                    candles=candles,
+                    when=datetime.now(tz=UTC),
+                )
+                print(f"recovery_decision={decision.action}")
+                print(f"recovery_message={decision.message}")
+                print(
+                    f"reconstruction_attempted={'true' if decision.reconstruction_attempted else 'false'}"
+                )
+                print(
+                    f"reconstruction_succeeded={'true' if decision.reconstruction_succeeded else 'false'}"
+                )
+                indicator_snapshot = build_indicator_snapshot(candles, config.momentum)
+            except TransientExchangeError as exc:
+                print("recovery_decision=recovery-unavailable")
+                print(f"recovery_message={exc}")
+                exchange_position = None
+                indicator_snapshot = None
+            print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
+            if state.active_position is None:
+                print("active_position=false")
+                print(f"completed_cycles={state.completed_cycles}")
+                if state.last_closed_position is not None:
+                    print(f"last_exit_reason={state.last_closed_position.exit_reason}")
+                    print(f"last_exit_price={state.last_closed_position.exit_price}")
+                    print(
+                        f"last_realized_pnl_estimate={state.last_closed_position.realized_pnl_estimate}"
+                    )
+                return
+            position = state.active_position
+            print("active_position=true")
+            print(f"position_side={position.side}")
+            print(f"average_entry_price={position.average_entry_price}")
+            print(f"total_quantity={position.total_quantity}")
+            print(
+                "highest_price_since_entry="
+                f"{position.highest_price_since_entry if position.highest_price_since_entry is not None else ''}"
+            )
+            print(f"initial_stop_price={position.initial_stop_price if position.initial_stop_price is not None else ''}")
+            print(
+                f"trailing_stop_price={position.trailing_stop_price if position.trailing_stop_price is not None else ''}"
+            )
+            print(f"breakout_level={position.breakout_level if position.breakout_level is not None else ''}")
+            print(
+                "fixed_take_profit_price="
+                f"{fixed_take_profit_price(position, config.momentum) if fixed_take_profit_price(position, config.momentum) is not None else ''}"
+            )
+            if indicator_snapshot is not None:
+                print(f"latest_close={indicator_snapshot.close_price}")
+                print(f"ema_fast={indicator_snapshot.ema_fast}")
+                print(f"ema_slow={indicator_snapshot.ema_slow}")
+                print(f"adx={indicator_snapshot.adx}")
+                print(f"atr={indicator_snapshot.atr}")
+                print(f"atr_percent={indicator_snapshot.atr_percent}")
+            print(f"completed_cycles={state.completed_cycles}")
+            if state.last_closed_position is not None:
+                print(f"last_exit_reason={state.last_closed_position.exit_reason}")
+                print(f"last_exit_price={state.last_closed_position.exit_price}")
+                print(
+                    f"last_realized_pnl_estimate={state.last_closed_position.realized_pnl_estimate}"
+                )
+            return
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         print(f"state_file={config.dca.state_file}")
@@ -172,7 +273,31 @@ def main() -> None:
 
     if args.thresholds:
         if configured_strategy_type(config) == "momentum":
-            raise SystemExit("Momentum thresholds CLI is planned for Phase 8 and is not implemented yet.")
+            state = load_momentum_state(config.momentum.state_file)
+            if state.active_position is None:
+                print("active_position=false")
+                print(f"state_file={config.momentum.state_file}")
+                return
+            position = state.active_position
+            print("active_position=true")
+            print(f"state_file={config.momentum.state_file}")
+            print(f"symbol={position.symbol}")
+            print(f"side={position.side}")
+            print(f"average_entry_price={position.average_entry_price}")
+            print(f"total_quantity={position.total_quantity}")
+            print(
+                "highest_price_since_entry="
+                f"{position.highest_price_since_entry if position.highest_price_since_entry is not None else ''}"
+            )
+            print(f"initial_stop_price={position.initial_stop_price if position.initial_stop_price is not None else ''}")
+            print(
+                f"trailing_stop_price={position.trailing_stop_price if position.trailing_stop_price is not None else ''}"
+            )
+            print(
+                "fixed_take_profit_price="
+                f"{fixed_take_profit_price(position, config.momentum) if fixed_take_profit_price(position, config.momentum) is not None else ''}"
+            )
+            return
         state = load_state(config.dca.state_file)
         if state.active_cycle is None:
             print("active_cycle=false")
@@ -195,7 +320,58 @@ def main() -> None:
 
     if args.recovery_status:
         if configured_strategy_type(config) == "momentum":
-            raise SystemExit("Momentum recovery CLI is planned for Phase 7 and is not implemented yet.")
+            exchange = build_exchange(config, logging.getLogger("gravity_dca"))
+            state = load_momentum_state(config.momentum.state_file)
+            try:
+                candles = exchange.get_candles(
+                    config.momentum.symbol,
+                    timeframe=config.momentum.timeframe,
+                    limit=momentum_candle_limit(config.momentum),
+                )
+                exchange_position = exchange.get_open_position(config.momentum.symbol)
+                exchange_fills = (
+                    exchange.get_recent_fills(config.momentum.symbol)
+                    if exchange_position is not None
+                    else None
+                )
+            except TransientExchangeError as exc:
+                print(f"state_file={config.momentum.state_file}")
+                print(f"symbol={config.momentum.symbol}")
+                print(f"local_active_position={'true' if state.active_position is not None else 'false'}")
+                print("exchange_position=unknown")
+                print("decision=recovery-unavailable")
+                print(f"message={exc}")
+                return
+            decision = reconcile_momentum_state(
+                state=state,
+                settings=config.momentum,
+                symbol=config.momentum.symbol,
+                exchange_position=exchange_position,
+                exchange_fills=exchange_fills,
+                candles=candles,
+                when=datetime.now(tz=UTC),
+            )
+            print(f"state_file={config.momentum.state_file}")
+            print(f"symbol={config.momentum.symbol}")
+            print(f"local_active_position={'true' if state.active_position is not None else 'false'}")
+            print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
+            print(f"decision={decision.action}")
+            print(f"message={decision.message}")
+            print(
+                f"reconstruction_attempted={'true' if decision.reconstruction_attempted else 'false'}"
+            )
+            print(
+                f"reconstruction_succeeded={'true' if decision.reconstruction_succeeded else 'false'}"
+            )
+            if decision.reconstruction_message is not None:
+                print(f"reconstruction_message={decision.reconstruction_message}")
+            if decision.recovered_position is not None:
+                print(f"reconstructed_trailing_stop_price={decision.recovered_position.trailing_stop_price}")
+                print(
+                    "reconstructed_highest_price_since_entry="
+                    f"{decision.recovered_position.highest_price_since_entry}"
+                )
+            return
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         try:
