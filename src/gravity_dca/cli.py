@@ -5,15 +5,20 @@ from datetime import datetime, timezone
 import logging
 
 from .bot import DcaBot
+from .momentum_bot import MomentumBot
 from .config import load_config
 from .exchange import GrvtExchange, TransientExchangeError
+from .telegram import build_notifier, configured_symbol
 from .recovery import reconcile_state
 from .state import load_state
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
-from .telegram import build_notifier
 
 
 UTC = timezone.utc
+
+
+def configured_strategy_type(config) -> str:
+    return getattr(config, "strategy_type", "dca")
 
 
 def build_exchange(config, logger: logging.Logger) -> GrvtExchange:
@@ -90,7 +95,7 @@ def main() -> None:
 
     if args.position_config:
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
-        details = exchange.get_initial_position_details(config.dca.symbol)
+        details = exchange.get_initial_position_details(configured_symbol(config))
         print(f"symbol={details.symbol}")
         print(f"leverage={details.leverage if details.leverage is not None else ''}")
         print(f"min_leverage={details.min_leverage if details.min_leverage is not None else ''}")
@@ -99,6 +104,8 @@ def main() -> None:
         return
 
     if args.status:
+        if configured_strategy_type(config) == "momentum":
+            raise SystemExit("Momentum status CLI is planned for Phase 8 and is not implemented yet.")
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         print(f"state_file={config.dca.state_file}")
@@ -164,6 +171,8 @@ def main() -> None:
         return
 
     if args.thresholds:
+        if configured_strategy_type(config) == "momentum":
+            raise SystemExit("Momentum thresholds CLI is planned for Phase 8 and is not implemented yet.")
         state = load_state(config.dca.state_file)
         if state.active_cycle is None:
             print("active_cycle=false")
@@ -185,6 +194,8 @@ def main() -> None:
         return
 
     if args.recovery_status:
+        if configured_strategy_type(config) == "momentum":
+            raise SystemExit("Momentum recovery CLI is planned for Phase 7 and is not implemented yet.")
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         try:
@@ -233,7 +244,10 @@ def main() -> None:
         print(f"detail={result.detail}")
         return
 
-    bot = DcaBot(config, logging.getLogger("gravity_dca"))
+    if configured_strategy_type(config) == "momentum":
+        bot = MomentumBot(config, logging.getLogger("gravity_dca"))
+    else:
+        bot = DcaBot(config, logging.getLogger("gravity_dca"))
     if args.once:
         bot.run_once()
         return

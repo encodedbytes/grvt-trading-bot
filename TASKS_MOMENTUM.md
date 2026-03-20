@@ -245,6 +245,8 @@ Delivered:
 
 ### Phase 6: Bot Orchestration
 
+Status: implemented
+
 Goal:
 - add a runtime bot flow for momentum execution
 
@@ -256,6 +258,13 @@ Tasks:
 
 Completion criteria:
 - end-to-end orchestration tests pass with mocked exchange responses
+
+Delivered:
+- added a dedicated `MomentumBot` runtime flow in `gravity_dca.momentum_bot`
+- reused shared order submission, fill-confirmed persistence, notifier, and runtime-status patterns
+- added CLI dispatch to run momentum configs through `MomentumBot`
+- extended bot-local status snapshots and notifier helpers to support momentum configs
+- added orchestration tests for dry-run entry, live entry persistence, and live exit persistence
 
 ### Phase 7: Recovery
 

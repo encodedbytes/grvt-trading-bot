@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import AppConfig
+from .momentum_state import load_momentum_state
 from .state import BotState, load_state
 from .status_snapshot import (
     RuntimeStatus,
@@ -43,7 +44,14 @@ class SharedBotStatus:
                 risk_reduce_only_reason=self.runtime.risk_reduce_only_reason,
                 risk_reduce_only_at=self.runtime.risk_reduce_only_at,
             )
-        state = load_state(self.config.dca.state_file)
+        if self.config.strategy_type == "momentum":
+            if self.config.momentum is None:
+                raise ValueError("Momentum config is required for momentum bot API snapshots")
+            state = load_momentum_state(self.config.momentum.state_file)
+        else:
+            if self.config.dca is None:
+                raise ValueError("DCA config is required for DCA bot API snapshots")
+            state = load_state(self.config.dca.state_file)
         return build_status_snapshot(self.config, state, runtime)
 
     def mark_iteration_started(self, when: str) -> None:
