@@ -223,6 +223,21 @@ Build the image:
 make docker-build
 ```
 
+By default, local Docker builds use the current git-derived tag from `git describe --tags --always --dirty`, so the image names look like `gravity-dca-bot:v0.2.13-6-g21e3d04` and `gravity-dca-dashboard:v0.2.13-6-g21e3d04`.
+
+Inspect the computed local image names without building:
+
+```bash
+make docker-image-info
+```
+
+Override the tag manually when needed:
+
+```bash
+make docker-build IMAGE_TAG=v0.2.13
+make dashboard-docker-build IMAGE_TAG=v0.2.13
+```
+
 Build the dashboard image:
 
 ```bash

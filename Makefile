@@ -5,12 +5,15 @@ BOT := .venv/bin/gravity-dca
 DASHBOARD := .venv/bin/gravity-dca-dashboard
 CONFIG ?= config.toml
 SYMBOL ?= BTC_USDT_Perp
-IMAGE ?= gravity-dca-bot:local
-IMAGE_DASHBOARD ?= gravity-dca-dashboard:local
+IMAGE_TAG ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo local)
+IMAGE_REPO ?= gravity-dca-bot
+IMAGE_DASHBOARD_REPO ?= gravity-dca-dashboard
+IMAGE ?= $(IMAGE_REPO):$(IMAGE_TAG)
+IMAGE_DASHBOARD ?= $(IMAGE_DASHBOARD_REPO):$(IMAGE_TAG)
 CONTAINER ?= gravity-dca
 CONTAINER_DASHBOARD ?= gravity-dca-dashboard
 
-.PHONY: venv install test run once instrument position-config status thresholds recovery-status notify-test dashboard docker-build dashboard-docker-build docker-run docker-once docker-up docker-restart docker-logs docker-down dashboard-docker-run dashboard-docker-up dashboard-docker-logs dashboard-docker-down clean
+.PHONY: venv install test run once instrument position-config status thresholds recovery-status notify-test dashboard docker-build dashboard-docker-build docker-run docker-once docker-up docker-restart docker-logs docker-down dashboard-docker-run dashboard-docker-up dashboard-docker-logs dashboard-docker-down docker-image-info clean
 
 venv:
 	python3 -m venv .venv
@@ -48,6 +51,11 @@ notify-test:
 
 dashboard:
 	$(DASHBOARD)
+
+docker-image-info:
+	@echo IMAGE_TAG=$(IMAGE_TAG)
+	@echo IMAGE=$(IMAGE)
+	@echo IMAGE_DASHBOARD=$(IMAGE_DASHBOARD)
 
 docker-build:
 	docker build -t $(IMAGE) .

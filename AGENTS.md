@@ -61,6 +61,7 @@ make notify-test CONFIG=config.toml
 
 Docker:
 ```bash
+make docker-image-info
 make docker-build
 make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth
@@ -72,6 +73,10 @@ make dashboard-docker-up
 make dashboard-docker-logs
 make dashboard-docker-down
 ```
+
+Docker image defaults:
+- local Docker image tags are derived from `git describe --tags --always --dirty`
+- override with `IMAGE_TAG=...` when you want a specific local tag
 
 ## Files That Matter Most
 
