@@ -221,6 +221,8 @@ Delivered:
 
 ### Phase 5: Strategy Logic
 
+Status: implemented
+
 Goal:
 - implement pure momentum decision-making independent of exchange I/O
 
@@ -233,6 +235,13 @@ Tasks:
 
 Completion criteria:
 - strategy unit tests cover entry, hold, stop, trail, and exit cases
+
+Delivered:
+- added pure momentum strategy helpers in `gravity_dca.momentum_strategy`
+- implemented entry checks for trend, breakout, ADX, ATR percent, and max-cycle gating
+- implemented initial stop and trailing-stop computation
+- implemented trend-failure and optional take-profit exits
+- added unit tests for entry, hold, stop-loss, trailing-stop progression, and trend-failure exits
 
 ### Phase 6: Bot Orchestration
 
