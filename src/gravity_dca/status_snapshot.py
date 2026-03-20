@@ -20,10 +20,27 @@ class RuntimeStatus:
     last_iteration_succeeded_at: str | None = None
     last_iteration_error: str | None = None
     last_iteration_error_at: str | None = None
+    risk_reduce_only: bool = False
+    risk_reduce_only_reason: str | None = None
+    risk_reduce_only_at: str | None = None
 
 
 def new_runtime_status() -> RuntimeStatus:
     return RuntimeStatus(started_at=datetime.now(tz=UTC).isoformat())
+
+
+def detect_risk_reduce_only_reason(error: Exception | str) -> str | None:
+    text = str(error).strip()
+    normalized = text.lower()
+    markers = (
+        "only risk reducing orders are allowed",
+        "only risk-reducing orders are allowed",
+        "only risk reducing orders are permitted",
+        "only risk-reducing orders are permitted",
+    )
+    if any(marker in normalized for marker in markers):
+        return text
+    return None
 
 
 def serialize_cycle(cycle: Any) -> dict[str, str | int | None]:
@@ -110,5 +127,8 @@ def build_status_snapshot(
             "last_iteration_succeeded_at": runtime.last_iteration_succeeded_at,
             "last_iteration_error": runtime.last_iteration_error,
             "last_iteration_error_at": runtime.last_iteration_error_at,
+            "risk_reduce_only": runtime.risk_reduce_only,
+            "risk_reduce_only_reason": runtime.risk_reduce_only_reason,
+            "risk_reduce_only_at": runtime.risk_reduce_only_at,
         },
     }
