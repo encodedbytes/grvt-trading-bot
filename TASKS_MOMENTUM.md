@@ -199,6 +199,8 @@ Delivered:
 
 ### Phase 4: State Model
 
+Status: implemented
+
 Goal:
 - add dedicated momentum state persistence
 
@@ -209,6 +211,13 @@ Tasks:
 
 Completion criteria:
 - momentum state round-trip tests pass
+
+Delivered:
+- added dedicated momentum state models in `gravity_dca.momentum_state`
+- separated active position and closed position persistence from DCA cycle state
+- added JSON load/save helpers for momentum state files
+- added active-position update helpers for trailing-stop and breakout metadata
+- added round-trip and validation tests for momentum state persistence
 
 ### Phase 5: Strategy Logic
 
