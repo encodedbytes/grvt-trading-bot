@@ -36,6 +36,7 @@ Before making changes or running the bot again, check:
 - Each bot must use a unique `state_file`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
+- If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.
 - `margin_type` changes are blocked when a live position exists for that symbol.

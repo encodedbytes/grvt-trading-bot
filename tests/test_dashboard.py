@@ -307,7 +307,11 @@ bot_api_port = 8787
                 "next_safety_trigger_price": "72000",
             },
             "last_closed_cycle": None,
-            "runtime_status": {"last_iteration_error": "ValueError: boom"},
+            "runtime_status": {
+                "last_iteration_error": "ValueError: boom",
+                "risk_reduce_only": True,
+                "risk_reduce_only_reason": "Only risk-reducing orders are permitted",
+            },
         },
     )
     container = dashboard.DockerContainer(
@@ -326,6 +330,8 @@ bot_api_port = 8787
     assert summary["recent_error"] == "ValueError: boom"
     assert summary["last_log_line"] == "log line"
     assert summary["bot_api_port"] == 8787
+    assert summary["risk_reduce_only"] is True
+    assert summary["risk_reduce_only_reason"] == "Only risk-reducing orders are permitted"
 
 
 def test_summarize_bot_container_uses_configured_api_port(monkeypatch, tmp_path) -> None:
@@ -402,6 +408,10 @@ def test_dashboard_html_uses_dark_theme_and_accessible_controls() -> None:
     assert 'aria-live="polite"' in dashboard.HTML_PAGE
     assert 'class="card-button" data-container="' in dashboard.HTML_PAGE
     assert 'type="button" aria-label="Open details for ' in dashboard.HTML_PAGE
+    assert 'role="dialog"' in dashboard.HTML_PAGE
+    assert 'aria-modal="true"' in dashboard.HTML_PAGE
+    assert 'aria-hidden="true"' in dashboard.HTML_PAGE
+    assert 'tabindex="-1"' in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_has_view_toggle() -> None:
@@ -415,6 +425,10 @@ def test_dashboard_html_has_view_toggle() -> None:
     assert 'function renderCards(bots, errorMessage) {' in dashboard.HTML_PAGE
     assert 'if (selectedView === "horizontal") {' in dashboard.HTML_PAGE
     assert 'function renderHorizontalBot(bot, statusBadges)' in dashboard.HTML_PAGE
+    assert 'function syncUrlState() {' in dashboard.HTML_PAGE
+    assert 'url.searchParams.set("view", selectedView);' in dashboard.HTML_PAGE
+    assert 'url.searchParams.set("bot", selectedBot);' in dashboard.HTML_PAGE
+    assert 'view: viewParam ? normalizeViewMode(viewParam) : null' in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_closes_drawer_on_escape() -> None:
@@ -424,3 +438,23 @@ def test_dashboard_html_closes_drawer_on_escape() -> None:
 
 def test_dashboard_html_shows_bot_api_port_in_drawer() -> None:
     assert 'field("Bot API port", bot.bot_api_port)' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_surfaces_risk_reduce_only_runtime_state() -> None:
+    assert 'badgeClass("risk-reduce-only")' in dashboard.HTML_PAGE
+    assert 'field("Risk reduce-only", bot.risk_reduce_only ? "true" : "false")' in dashboard.HTML_PAGE
+    assert 'field("Restriction", bot.risk_reduce_only_reason)' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_formats_timestamps_with_intl() -> None:
+    assert 'new Intl.DateTimeFormat(undefined, {' in dashboard.HTML_PAGE
+    assert 'function formatDateTime(value) {' in dashboard.HTML_PAGE
+    assert "formatDateTime(payload.generated_at)" in dashboard.HTML_PAGE
+    assert 'field("Started at", formatDateTime(bot.active_cycle.started_at))' in dashboard.HTML_PAGE
+    assert 'field("Closed at", formatDateTime(bot.last_closed_cycle.closed_at))' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_restores_focus_to_trigger_after_close() -> None:
+    assert "var lastFocusedTrigger = null;" in dashboard.HTML_PAGE
+    assert 'lastFocusedTrigger = triggerElement || document.activeElement;' in dashboard.HTML_PAGE
+    assert 'if (lastFocusedTrigger && typeof lastFocusedTrigger.focus === "function") {' in dashboard.HTML_PAGE

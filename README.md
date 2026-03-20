@@ -273,8 +273,10 @@ What it shows:
 - active cycle summary with entry, quantity, TP, SL, and next safety trigger
 - completed cycle count and last closed cycle summary
 - recent error line and most recent log line from each container
+- explicit `risk-reduce-only` runtime state when GRVT cross margin blocks exposure-increasing orders
 - clickable per-bot detail panel with live log tailing
 - configurable card layout with `Vertical` and `Horizontal` views
+- URL-synced view and selected bot state for reload/shareable dashboard context
 - keyboard shortcut support for `Esc` to close the detail drawer
 
 It does not:
@@ -296,7 +298,7 @@ Bot-local API:
 - active cycle summary
 - TP, SL, and next safety trigger thresholds
 - last closed cycle summary when present
-- runtime status timestamps and the most recent iteration error when present
+- runtime status timestamps, the most recent iteration error, and `risk-reduce-only` state when present
 
 Notes:
 - the bot API is read-only

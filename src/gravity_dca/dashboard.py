@@ -62,6 +62,7 @@ HTML_PAGE = """<!doctype html>
         radial-gradient(circle at top right, rgba(203, 75, 22, 0.14), transparent 22rem),
         linear-gradient(180deg, #001f27 0%, var(--bg) 38%, #001820 100%);
       min-height: 100vh;
+      overflow-x: hidden;
       -webkit-tap-highlight-color: rgba(42, 161, 152, 0.2);
     }
     a, button, input { font: inherit; }
@@ -86,7 +87,7 @@ HTML_PAGE = """<!doctype html>
     .shell {
       width: min(1240px, calc(100vw - 2rem));
       margin: 0 auto;
-      padding: 2rem 0 3rem;
+      padding: max(2rem, env(safe-area-inset-top)) 0 max(3rem, env(safe-area-inset-bottom));
     }
     .hero {
       display: flex;
@@ -235,6 +236,10 @@ HTML_PAGE = """<!doctype html>
       box-shadow: 0 28px 56px rgba(0, 18, 24, 0.52);
       border-color: rgba(42, 161, 152, 0.42);
     }
+    .card:focus-within {
+      border-color: rgba(42, 161, 152, 0.56);
+      box-shadow: 0 0 0 1px rgba(42, 161, 152, 0.26), 0 28px 56px rgba(0, 18, 24, 0.52);
+    }
     .card-button:focus-visible, .drawer-close:focus-visible, .logs-toggle input:focus-visible {
       outline: 2px solid var(--focus);
       outline-offset: 3px;
@@ -346,7 +351,11 @@ HTML_PAGE = """<!doctype html>
       display: none;
       background: rgba(0, 18, 24, 0.58);
       backdrop-filter: blur(8px);
-      padding: 1rem;
+      padding:
+        max(1rem, env(safe-area-inset-top))
+        max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom))
+        max(1rem, env(safe-area-inset-left));
       z-index: 20;
       overscroll-behavior: contain;
     }
@@ -361,6 +370,7 @@ HTML_PAGE = """<!doctype html>
       overflow: auto;
       padding: 1.2rem;
       position: relative;
+      overscroll-behavior: contain;
       background:
         linear-gradient(180deg, rgba(42, 161, 152, 0.08), transparent 20%),
         linear-gradient(180deg, rgba(12, 54, 66, 0.98), rgba(6, 43, 54, 0.98));
@@ -459,6 +469,7 @@ HTML_PAGE = """<!doctype html>
       min-height: 18rem;
       max-height: 28rem;
       overflow: auto;
+      overscroll-behavior: contain;
       border: 1px solid rgba(42, 161, 152, 0.14);
       font-variant-numeric: tabular-nums;
     }
@@ -472,8 +483,14 @@ HTML_PAGE = """<!doctype html>
       word-break: break-word;
     }
     @media (prefers-reduced-motion: reduce) {
-      .skip-link, .card, .drawer-close {
+      .skip-link, .card, .drawer-close, .view-toggle button {
         transition: none;
+      }
+      .drawer {
+        backdrop-filter: none;
+      }
+      .card:hover {
+        transform: none;
       }
     }
     @media (max-width: 680px) {
@@ -509,8 +526,8 @@ HTML_PAGE = """<!doctype html>
     </section>
     <section class="grid" id="cards" data-view="vertical"></section>
   </main>
-  <aside class="drawer" id="drawer">
-    <section class="drawer-panel">
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-describedby="drawer-subtitle" aria-hidden="true">
+    <section class="drawer-panel" tabindex="-1">
       <div class="drawer-header">
         <div>
           <h2 id="drawer-title">Bot details</h2>
@@ -536,6 +553,11 @@ HTML_PAGE = """<!doctype html>
     var focusLogsOnDrawerOpen = false;
     var selectedView = loadViewMode();
     var latestBots = [];
+    var lastFocusedTrigger = null;
+    var dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
     function clientLog(message) {
       var img = new Image();
       img.src = "/api/client-log?message=" + encodeURIComponent(message);
@@ -552,7 +574,7 @@ HTML_PAGE = """<!doctype html>
     }
     function badgeClass(kind) {
       if (kind === "running" || kind === "active") return "ok";
-      if (kind === "inactive-max-cycles" || kind === "paused") return "warn";
+      if (kind === "inactive-max-cycles" || kind === "paused" || kind === "risk-reduce-only") return "warn";
       if (kind === "missing-state" || kind === "exited" || kind === "error") return "danger";
       return "info";
     }
@@ -575,12 +597,41 @@ HTML_PAGE = """<!doctype html>
     function normalizeViewMode(value) {
       return value === "horizontal" ? "horizontal" : "vertical";
     }
+    function currentUrl() {
+      return new URL(window.location.href);
+    }
+    function readStateFromUrl() {
+      var url = currentUrl();
+      var viewParam = url.searchParams.get("view");
+      return {
+        view: viewParam ? normalizeViewMode(viewParam) : null,
+        bot: url.searchParams.get("bot") || null
+      };
+    }
+    function syncUrlState() {
+      var url = currentUrl();
+      url.searchParams.set("view", selectedView);
+      if (selectedBot) {
+        url.searchParams.set("bot", selectedBot);
+      } else {
+        url.searchParams.delete("bot");
+      }
+      window.history.replaceState(null, "", url.toString());
+    }
     function loadViewMode() {
+      var state = readStateFromUrl();
+      if (state.view) return state.view;
       try {
         return normalizeViewMode(window.localStorage.getItem("gravity-dashboard-view"));
       } catch (error) {
         return "vertical";
       }
+    }
+    function formatDateTime(value) {
+      if (!value) return "";
+      var parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return value;
+      return dateTimeFormatter.format(parsed);
     }
     function applyViewMode(view) {
       selectedView = normalizeViewMode(view);
@@ -590,11 +641,12 @@ HTML_PAGE = """<!doctype html>
       try {
         window.localStorage.setItem("gravity-dashboard-view", selectedView);
       } catch (error) {}
+      syncUrlState();
       renderCards(latestBots);
     }
     function bindCardHandlers() {
       Array.prototype.forEach.call(document.querySelectorAll(".card-button[data-container]"), function(card) {
-        card.addEventListener("click", function() { openDrawer(card.getAttribute("data-container")); });
+        card.addEventListener("click", function() { openDrawer(card.getAttribute("data-container"), card); });
       });
     }
     function renderCards(bots, errorMessage) {
@@ -647,6 +699,9 @@ HTML_PAGE = """<!doctype html>
         '<span class="badge ' + badgeClass(bot.lifecycle_state) + '">' + esc(bot.lifecycle_state) + '</span>',
         '<span class="badge info">' + esc(bot.order_type) + '</span>'
       ].join("");
+      if (bot.risk_reduce_only) {
+        statusBadges += '<span class="badge ' + badgeClass("risk-reduce-only") + '">risk-reduce-only</span>';
+      }
       if (selectedView === "horizontal") {
         return renderHorizontalBot(bot, statusBadges);
       }
@@ -706,16 +761,25 @@ HTML_PAGE = """<!doctype html>
     function renderDrawerSection(title, rows) {
       return '<article class="drawer-card"><h3>' + esc(title) + '</h3><dl>' + rows.join('') + '</dl></article>';
     }
-    function openDrawer(containerName) {
+    function openDrawer(containerName, triggerElement) {
       selectedBot = containerName;
       focusLogsOnDrawerOpen = true;
+      lastFocusedTrigger = triggerElement || document.activeElement;
       document.getElementById("drawer").classList.add("open");
+      document.getElementById("drawer").setAttribute("aria-hidden", "false");
+      document.querySelector(".drawer-panel").focus();
+      syncUrlState();
       refreshDrawer();
     }
     function closeDrawer() {
       selectedBot = null;
       focusLogsOnDrawerOpen = false;
       document.getElementById("drawer").classList.remove("open");
+      document.getElementById("drawer").setAttribute("aria-hidden", "true");
+      syncUrlState();
+      if (lastFocusedTrigger && typeof lastFocusedTrigger.focus === "function") {
+        lastFocusedTrigger.focus();
+      }
     }
     function shouldAutoScrollLogs() {
       var toggle = document.getElementById("drawer-autoscroll");
@@ -751,6 +815,8 @@ HTML_PAGE = """<!doctype html>
               field("Margin type", bot.margin_type),
               field("Poll seconds", bot.poll_seconds),
               field("Bot API port", bot.bot_api_port),
+              field("Risk reduce-only", bot.risk_reduce_only ? "true" : "false"),
+              field("Restriction", bot.risk_reduce_only_reason),
               field("Completed cycles", bot.completed_cycles),
               field("Max cycles", bot.max_cycles),
               field("Telegram", bot.telegram_enabled ? "enabled" : "disabled")
@@ -760,7 +826,7 @@ HTML_PAGE = """<!doctype html>
           document.getElementById("drawer-subtitle").textContent = bot.container_name + " • " + bot.environment + " • " + bot.container_state + " • " + bot.lifecycle_state;
           if (bot.active_cycle) {
             sections.push(renderDrawerSection("Active cycle", [
-              field("Started at", bot.active_cycle.started_at),
+              field("Started at", formatDateTime(bot.active_cycle.started_at)),
               field("Side", bot.active_cycle.side),
               field("Average entry", bot.active_cycle.average_entry_price),
               field("Quantity", bot.active_cycle.total_quantity),
@@ -774,7 +840,7 @@ HTML_PAGE = """<!doctype html>
           }
           if (bot.last_closed_cycle) {
             sections.push(renderDrawerSection("Last closed cycle", [
-              field("Closed at", bot.last_closed_cycle.closed_at),
+              field("Closed at", formatDateTime(bot.last_closed_cycle.closed_at)),
               field("Reason", bot.last_closed_cycle.exit_reason),
               field("Exit price", bot.last_closed_cycle.exit_price),
               field("PnL est.", bot.last_closed_cycle.realized_pnl_estimate)
@@ -810,7 +876,7 @@ HTML_PAGE = """<!doctype html>
         .then(function(payload) {
           clientLog("refresh-success");
           showBanner(payload.error || "");
-          document.getElementById('updated').textContent = 'Updated ' + new Date(payload.generated_at).toLocaleString();
+          document.getElementById('updated').textContent = 'Updated ' + formatDateTime(payload.generated_at);
           document.getElementById("summary").innerHTML = [
             summaryCard('Containers', payload.summary.total_containers),
             summaryCard('Active cycles', payload.summary.active_cycles),
@@ -849,6 +915,12 @@ HTML_PAGE = """<!doctype html>
     clientLog("script-start");
     document.getElementById("updated").textContent = "Script started";
     applyViewMode(selectedView);
+    var initialState = readStateFromUrl();
+    if (initialState.bot) {
+      selectedBot = initialState.bot;
+      document.getElementById("drawer").classList.add("open");
+      document.getElementById("drawer").setAttribute("aria-hidden", "false");
+    }
     refresh();
     setInterval(refresh, 10000);
     setInterval(refreshDrawer, 4000);
@@ -1190,6 +1262,10 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             "active_cycle": status_payload["active_cycle"],
             "thresholds": status_payload["thresholds"],
             "last_closed_cycle": status_payload["last_closed_cycle"],
+            "risk_reduce_only": status_payload["runtime_status"].get("risk_reduce_only", False),
+            "risk_reduce_only_reason": status_payload["runtime_status"].get(
+                "risk_reduce_only_reason"
+            ),
             "recent_error": status_payload["runtime_status"]["last_iteration_error"] or recent_error,
             "last_log_line": last_log_line,
         }
@@ -1219,6 +1295,8 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
                 "next_safety_trigger_price": None,
             },
             "last_closed_cycle": None,
+            "risk_reduce_only": False,
+            "risk_reduce_only_reason": None,
             "recent_error": load_error or recent_error,
             "last_log_line": last_log_line,
         }
@@ -1291,6 +1369,8 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             if state.last_closed_cycle is not None
             else None
         ),
+        "risk_reduce_only": False,
+        "risk_reduce_only_reason": None,
         "recent_error": recent_error,
         "last_log_line": last_log_line,
     }

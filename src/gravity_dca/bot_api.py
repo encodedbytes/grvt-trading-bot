@@ -11,7 +11,12 @@ from urllib.parse import urlparse
 
 from .config import AppConfig
 from .state import BotState, load_state
-from .status_snapshot import RuntimeStatus, build_status_snapshot, new_runtime_status
+from .status_snapshot import (
+    RuntimeStatus,
+    build_status_snapshot,
+    detect_risk_reduce_only_reason,
+    new_runtime_status,
+)
 
 
 API_HOST = "0.0.0.0"
@@ -34,6 +39,9 @@ class SharedBotStatus:
                 last_iteration_succeeded_at=self.runtime.last_iteration_succeeded_at,
                 last_iteration_error=self.runtime.last_iteration_error,
                 last_iteration_error_at=self.runtime.last_iteration_error_at,
+                risk_reduce_only=self.runtime.risk_reduce_only,
+                risk_reduce_only_reason=self.runtime.risk_reduce_only_reason,
+                risk_reduce_only_at=self.runtime.risk_reduce_only_at,
             )
         state = load_state(self.config.dca.state_file)
         return build_status_snapshot(self.config, state, runtime)
@@ -48,12 +56,19 @@ class SharedBotStatus:
             self.runtime.last_iteration_succeeded_at = when
             self.runtime.last_iteration_error = None
             self.runtime.last_iteration_error_at = None
+            self.runtime.risk_reduce_only = False
+            self.runtime.risk_reduce_only_reason = None
+            self.runtime.risk_reduce_only_at = None
 
     def mark_iteration_failed(self, when: str, error: Exception) -> None:
         with self.lock:
             self.runtime.last_iteration_completed_at = when
             self.runtime.last_iteration_error = f"{type(error).__name__}: {error}"
             self.runtime.last_iteration_error_at = when
+            risk_reduce_only_reason = detect_risk_reduce_only_reason(error)
+            self.runtime.risk_reduce_only = risk_reduce_only_reason is not None
+            self.runtime.risk_reduce_only_reason = risk_reduce_only_reason
+            self.runtime.risk_reduce_only_at = when if risk_reduce_only_reason is not None else None
 
 
 class _BotApiHandler(BaseHTTPRequestHandler):
