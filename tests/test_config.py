@@ -1,7 +1,10 @@
 from decimal import Decimal
 from pathlib import Path
+import re
 
-from gravity_dca.config import load_config
+import pytest
+
+from gravity_dca.config import load_config, load_config_text
 from gravity_dca.exchange import normalize_margin_type
 
 
@@ -261,3 +264,242 @@ private_auth_retry_backoff_seconds = 4
     assert config.telegram.error_notification_cooldown_seconds == 120
     assert config.runtime.private_auth_retry_attempts == 5
     assert config.runtime.private_auth_retry_backoff_seconds == 4
+
+
+def test_load_config_reads_momentum_settings(tmp_path) -> None:
+    config_path = tmp_path / "config.momentum.toml"
+    config_path.write_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+quote_amount = "500"
+order_type = "limit"
+limit_price_offset_percent = "0.05"
+initial_leverage = "5"
+margin_type = "cross"
+max_cycles = 5
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+use_trend_failure_exit = true
+take_profit_percent = "4.5"
+state_file = "/state/.gravity-momentum-eth.json"
+
+[runtime]
+dry_run = true
+"""
+    )
+
+    config = load_config(config_path)
+
+    assert config.strategy_type == "momentum"
+    assert config.dca is None
+    assert config.momentum is not None
+    assert config.momentum.symbol == "ETH_USDT_Perp"
+    assert config.momentum.quote_amount == Decimal("500")
+    assert config.momentum.order_type == "limit"
+    assert config.momentum.limit_price_offset_percent == Decimal("0.05")
+    assert config.momentum.initial_leverage == Decimal("5")
+    assert config.momentum.margin_type == "cross"
+    assert config.momentum.max_cycles == 5
+    assert config.momentum.timeframe == "5m"
+    assert config.momentum.ema_fast_period == 20
+    assert config.momentum.ema_slow_period == 50
+    assert config.momentum.breakout_lookback == 20
+    assert config.momentum.adx_period == 14
+    assert config.momentum.min_adx == Decimal("20")
+    assert config.momentum.atr_period == 14
+    assert config.momentum.min_atr_percent == Decimal("0.4")
+    assert config.momentum.stop_atr_multiple == Decimal("1.5")
+    assert config.momentum.trailing_atr_multiple == Decimal("2.0")
+    assert config.momentum.use_trend_failure_exit is True
+    assert config.momentum.take_profit_percent == Decimal("4.5")
+    assert config.momentum.state_file == tmp_path / "state" / ".gravity-momentum-eth.json"
+
+
+def test_load_config_reads_selector_style_momentum_settings() -> None:
+    config = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "momentum"
+
+[strategy.momentum]
+symbol = "BTC_USDT_Perp"
+quote_amount = "250"
+timeframe = "15m"
+ema_fast_period = 12
+ema_slow_period = 26
+breakout_lookback = 10
+adx_period = 14
+min_adx = "18"
+atr_period = 14
+min_atr_percent = "0.3"
+stop_atr_multiple = "1.2"
+trailing_atr_multiple = "1.8"
+
+[runtime]
+dry_run = true
+""",
+        resolve_state_paths=False,
+    )
+
+    assert config.strategy_type == "momentum"
+    assert config.momentum is not None
+    assert config.momentum.symbol == "BTC_USDT_Perp"
+    assert config.momentum.side == "buy"
+    assert config.momentum.order_type == "market"
+    assert config.momentum.state_file == Path(".gravity-momentum-state.json")
+
+
+def test_load_config_reports_friendly_error_for_null_values() -> None:
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "TOML does not support `null`; remove the key entirely to leave an optional value unset."
+        ),
+    ):
+        load_config_text(
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+quote_amount = "500"
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+take_profit_percent = null
+""",
+            config_path="config.momentum.toml",
+            resolve_state_paths=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "message"),
+    [
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+""",
+            "config must define either a [dca] or [momentum] section",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+quote_amount = "500"
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+""",
+            "config cannot define both [dca] and [momentum] sections",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "momentum"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+""",
+            "strategy.type = 'momentum' requires a [momentum] section",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+side = "sell"
+quote_amount = "500"
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+""",
+            "momentum side must be 'buy'",
+        ),
+    ],
+)
+def test_load_config_rejects_invalid_momentum_shapes(raw_text, message) -> None:
+    with pytest.raises(ValueError, match=re.escape(message)):
+        load_config_text(raw_text, resolve_state_paths=False)

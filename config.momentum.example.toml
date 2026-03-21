@@ -1,0 +1,46 @@
+[credentials]
+environment = "testnet"
+api_key = "replace-with-grvt-api-key"
+private_key = "replace-with-wallet-private-key"
+trading_account_id = "replace-with-sub-account-id"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+quote_amount = "500"
+order_type = "market"
+limit_price_offset_percent = "0.05"
+initial_leverage = "5"
+margin_type = "CROSS"
+max_cycles = 5
+
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+use_trend_failure_exit = true
+
+state_file = ".gravity-momentum-state.json"
+
+[runtime]
+dry_run = true
+poll_seconds = 30
+bot_api_port = 8787
+limit_ttl_seconds = 30
+private_auth_retry_attempts = 3
+private_auth_retry_backoff_seconds = 2
+log_level = "INFO"
+
+[telegram]
+enabled = false
+bot_token = "replace-with-telegram-bot-token"
+chat_id = "replace-with-chat-id"
+send_startup_summary = true
+notify_position_config_changes = true
+error_notification_cooldown_seconds = 300

@@ -1,27 +1,29 @@
-# GRVT DCA Bot
+# GRVT Futures Bots
 
-Python futures DCA bot for GRVT perpetual markets.
+Python futures trading bots for GRVT perpetual markets.
 
 Planning documents:
 - [TASKS.md](TASKS.md)
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
 
+Momentum strategy config example:
+- [config.momentum.example.toml](config.momentum.example.toml)
+
 ## Overview
 
-The bot:
-- opens an initial long or short position
-- adds safety orders as price moves against the position
-- recalculates average entry after each fill
-- closes the full position at take profit or stop loss
-- stores cycle state in a local JSON file
-- can sync GRVT leverage and `margin_type` before trading
+The repo currently includes:
+- a DCA bot with initial entry, safety orders, take profit, and optional stop loss
+- a momentum bot with trend-plus-breakout entry, ATR-based stops, and trend-failure exits
+- local state persistence and restart recovery
+- a local dashboard and bot-local read-only status API
 
 Important behavior:
 - entries and exits can use `market` or aggressive `limit` orders
 - take profit is price-based, not ROE-based
-- on startup, the bot first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
-- if full reconstruction is not safe, it falls back to position-level recovery
+- the momentum bot is long-only in this first version
+- on startup, DCA recovery first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
+- momentum recovery reconciles local state with the live exchange position and recomputes ATR-backed stop metadata
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 - GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
 - when a bot has no active cycle and has reached `max_cycles`, it sends a one-time inactive notification instead of silently going idle
@@ -58,6 +60,16 @@ Inspect the bot's current operator status in one view:
 ```bash
 make status CONFIG=config.toml
 ```
+
+For momentum configs, `make status` also prints flat-state entry diagnostics such as:
+- `entry_decision`
+- `entry_reason`
+- `latest_close`
+- `breakout_level`
+- `ema_fast`
+- `ema_slow`
+- `adx`
+- `atr_percent`
 
 Inspect the current active cycle thresholds:
 
@@ -106,6 +118,8 @@ make dashboard-docker-run
 
 Start from [config.example.toml](config.example.toml).
 
+Momentum configs can start from [config.momentum.example.toml](config.momentum.example.toml). Both DCA and momentum bot runs are supported.
+
 The most important settings are:
 - `environment`
 - `api_key`
@@ -133,6 +147,7 @@ Notes:
 - `initial_leverage` and `margin_type` are optional.
 - `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
 - `runtime.bot_api_port` controls the bot-local read-only API port and defaults to `8787`.
+- optional config values should be omitted entirely when unused; TOML `null` is not valid and the loader now reports that explicitly.
 - private GRVT POST calls also refresh the SDK session cookie on unauthenticated `401` responses before retrying once.
 - Production credentials require `environment = "prod"`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally. This allows configs under subdirectories like `local-configs/` to still use the repo-level `state/` directory.
@@ -161,6 +176,8 @@ For `order_type = "limit"`:
 ## State
 
 The bot stores cycle state in the path configured by `dca.state_file`.
+
+Momentum state is stored separately in the path configured by `momentum.state_file`.
 
 State includes:
 - symbol and side
@@ -216,6 +233,21 @@ Build the image:
 
 ```bash
 make docker-build
+```
+
+By default, local Docker builds use the current git-derived tag from `git describe --tags --always --dirty`, so the image names look like `gravity-dca-bot:v0.2.13-6-g21e3d04` and `gravity-dca-dashboard:v0.2.13-6-g21e3d04`.
+
+Inspect the computed local image names without building:
+
+```bash
+make docker-image-info
+```
+
+Override the tag manually when needed:
+
+```bash
+make docker-build IMAGE_TAG=v0.2.13
+make dashboard-docker-build IMAGE_TAG=v0.2.13
 ```
 
 Build the dashboard image:

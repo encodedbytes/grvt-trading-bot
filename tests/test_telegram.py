@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from gravity_dca.bot import DcaBot
+from gravity_dca.bot_api import build_shared_status
 from gravity_dca.config import AppConfig, DcaSettings, GrvtCredentials, RuntimeSettings, TelegramSettings
 from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, TransientExchangeError
 from gravity_dca.state import BotState
@@ -175,6 +176,7 @@ def test_bot_sends_startup_and_recovery_notifications_in_dry_run() -> None:
     bot._logger = logging.getLogger("gravity_dca")
     bot._exchange = FakeExchange()
     bot._notifier = fake_notifier
+    bot._shared_status = build_shared_status(bot._config, bot._logger)
     bot._startup_notified = False
     bot._recovery_notified = False
 
@@ -198,6 +200,7 @@ def test_bot_uses_local_state_when_recovery_has_transient_exchange_error(monkeyp
     bot._logger = logging.getLogger("gravity_dca")
     bot._exchange = TransientRecoveryExchange()
     bot._notifier = fake_notifier
+    bot._shared_status = build_shared_status(bot._config, bot._logger)
     bot._startup_notified = False
     bot._recovery_notified = False
     bot._last_iteration_error_key = None

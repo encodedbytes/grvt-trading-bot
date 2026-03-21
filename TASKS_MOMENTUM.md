@@ -48,7 +48,7 @@ Recommended initial defaults:
 - `stop_atr_multiple = 1.5`
 - `trailing_atr_multiple = 2.0`
 - `use_trend_failure_exit = true`
-- `take_profit_percent = null`
+- omit `take_profit_percent` to disable fixed take profit
 
 ### Position Model
 
@@ -86,7 +86,6 @@ min_atr_percent = "0.4"
 stop_atr_multiple = "1.5"
 trailing_atr_multiple = "2.0"
 use_trend_failure_exit = true
-take_profit_percent = null
 
 state_file = "/state/.gravity-momentum-eth.json"
 ```
@@ -127,6 +126,8 @@ Closed position state should track:
 
 ### Phase 1: Candle Data Support
 
+Status: implemented
+
 Goal:
 - support OHLCV or equivalent candle-history reads for momentum indicators
 
@@ -139,7 +140,16 @@ Tasks:
 Completion criteria:
 - bot can fetch recent candles for one symbol and timeframe
 
+Delivered:
+- added exchange-neutral `Candle` model
+- added `GrvtMarketData.get_candles(...)`
+- added `GrvtExchange.get_candles(...)`
+- verified installed GRVT SDK exposes `fetch_ohlcv(...)` with CCXT-style timeframe support
+- added parsing and transient-error tests
+
 ### Phase 2: Indicator Layer
+
+Status: implemented
 
 Goal:
 - compute the exact indicators required for the first momentum strategy
@@ -154,7 +164,17 @@ Tasks:
 Completion criteria:
 - deterministic unit tests for indicator outputs
 
+Delivered:
+- added pure indicator helpers in `gravity_dca.indicators`
+- implemented EMA with SMA seeding
+- implemented true range and Wilder ATR
+- implemented Wilder ADX
+- implemented highest-close helper with optional latest-candle offset
+- added deterministic unit tests for indicator values and validation paths
+
 ### Phase 3: Config Model
+
+Status: implemented
 
 Goal:
 - add config parsing for the momentum strategy
@@ -168,7 +188,17 @@ Tasks:
 Completion criteria:
 - config parsing tests pass for valid and invalid momentum configs
 
+Delivered:
+- added `MomentumSettings` config dataclass
+- added config parsing for flat `[momentum]` configs
+- added compatibility parsing for selector-style `[strategy] type = "momentum"` with `[strategy.momentum]`
+- kept legacy DCA configs unchanged and operational
+- added `config.momentum.example.toml`
+- added valid and invalid momentum config parsing tests
+
 ### Phase 4: State Model
+
+Status: implemented
 
 Goal:
 - add dedicated momentum state persistence
@@ -181,7 +211,16 @@ Tasks:
 Completion criteria:
 - momentum state round-trip tests pass
 
+Delivered:
+- added dedicated momentum state models in `gravity_dca.momentum_state`
+- separated active position and closed position persistence from DCA cycle state
+- added JSON load/save helpers for momentum state files
+- added active-position update helpers for trailing-stop and breakout metadata
+- added round-trip and validation tests for momentum state persistence
+
 ### Phase 5: Strategy Logic
+
+Status: implemented
 
 Goal:
 - implement pure momentum decision-making independent of exchange I/O
@@ -196,7 +235,16 @@ Tasks:
 Completion criteria:
 - strategy unit tests cover entry, hold, stop, trail, and exit cases
 
+Delivered:
+- added pure momentum strategy helpers in `gravity_dca.momentum_strategy`
+- implemented entry checks for trend, breakout, ADX, ATR percent, and max-cycle gating
+- implemented initial stop and trailing-stop computation
+- implemented trend-failure and optional take-profit exits
+- added unit tests for entry, hold, stop-loss, trailing-stop progression, and trend-failure exits
+
 ### Phase 6: Bot Orchestration
+
+Status: implemented
 
 Goal:
 - add a runtime bot flow for momentum execution
@@ -210,7 +258,16 @@ Tasks:
 Completion criteria:
 - end-to-end orchestration tests pass with mocked exchange responses
 
+Delivered:
+- added a dedicated `MomentumBot` runtime flow in `gravity_dca.momentum_bot`
+- reused shared order submission, fill-confirmed persistence, notifier, and runtime-status patterns
+- added CLI dispatch to run momentum configs through `MomentumBot`
+- extended bot-local status snapshots and notifier helpers to support momentum configs
+- added orchestration tests for dry-run entry, live entry persistence, and live exit persistence
+
 ### Phase 7: Recovery
+
+Status: implemented
 
 Goal:
 - make momentum restart-safe
@@ -224,7 +281,17 @@ Tasks:
 Completion criteria:
 - restart tests pass with missing local state and live exchange position
 
+Delivered:
+- added momentum-specific recovery in `gravity_dca.momentum_recovery`
+- reconciles local momentum state against live exchange position before each momentum iteration
+- rebuilds local active position from exchange position and reuses recent fill metadata when possible
+- recomputes trailing-stop state from current ATR-backed indicator context on recovery
+- preserves local active state on transient exchange recovery errors for the current iteration
+- added recovery tests for rebuild, keep-local refresh, stale-local clear, and mismatch failure paths
+
 ### Phase 8: CLI and Operator Tooling
+
+Status: implemented
 
 Goal:
 - expose momentum state and diagnostics from the command line
@@ -237,7 +304,16 @@ Tasks:
 Completion criteria:
 - operator commands work for both DCA and momentum flows
 
+Delivered:
+- added momentum-aware `status` output in `gravity_dca.cli`
+- added momentum-aware `thresholds` output in `gravity_dca.cli`
+- added momentum-aware `recovery-status` output in `gravity_dca.cli`
+- included current indicator and stop metadata in momentum status reporting
+- added CLI tests covering momentum operator commands
+
 ### Phase 9: Documentation
+
+Status: implemented
 
 Goal:
 - document setup and operation clearly
@@ -250,6 +326,12 @@ Tasks:
 
 Completion criteria:
 - docs reflect implemented momentum behavior and limitations
+
+Delivered:
+- updated `README.md` to reflect runnable momentum support and operator workflow
+- updated `AGENTS.md` with momentum runtime, diagnostics, and config error notes
+- corrected momentum examples to avoid invalid TOML `null` usage
+- documented flat-state momentum `status` diagnostics for skipped-entry troubleshooting
 
 ### Phase 10: Live Rollout
 

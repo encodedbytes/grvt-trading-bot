@@ -55,3 +55,20 @@ def test_shared_status_marks_and_clears_risk_reduce_only() -> None:
     snapshot = shared.snapshot()
     assert snapshot["runtime_status"]["risk_reduce_only"] is False
     assert snapshot["runtime_status"]["risk_reduce_only_reason"] is None
+
+
+def test_shared_status_preserves_strategy_status() -> None:
+    shared = build_shared_status(config(), logging.getLogger("gravity_dca"))
+
+    shared.set_strategy_status(
+        {
+            "strategy_type": "momentum",
+            "mode": "entry",
+            "entry_decision": "skip",
+            "entry_reason": "breakout-not-confirmed",
+        }
+    )
+
+    snapshot = shared.snapshot()
+
+    assert snapshot["runtime_status"]["strategy_status"]["entry_reason"] == "breakout-not-confirmed"

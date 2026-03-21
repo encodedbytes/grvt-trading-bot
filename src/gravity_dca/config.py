@@ -35,6 +35,31 @@ class DcaSettings:
 
 
 @dataclass(frozen=True)
+class MomentumSettings:
+    symbol: str
+    side: str
+    quote_amount: Decimal
+    timeframe: str
+    ema_fast_period: int
+    ema_slow_period: int
+    breakout_lookback: int
+    adx_period: int
+    min_adx: Decimal
+    atr_period: int
+    min_atr_percent: Decimal
+    stop_atr_multiple: Decimal
+    trailing_atr_multiple: Decimal
+    order_type: str = "market"
+    limit_price_offset_percent: Decimal = Decimal("0")
+    initial_leverage: Decimal | None = None
+    margin_type: str | None = None
+    max_cycles: int | None = None
+    use_trend_failure_exit: bool = True
+    take_profit_percent: Decimal | None = None
+    state_file: Path = Path(".gravity-momentum-state.json")
+
+
+@dataclass(frozen=True)
 class RuntimeSettings:
     dry_run: bool = True
     poll_seconds: int = 30
@@ -60,9 +85,11 @@ class TelegramSettings:
 @dataclass(frozen=True)
 class AppConfig:
     credentials: GrvtCredentials
-    dca: DcaSettings
+    dca: DcaSettings | None
     runtime: RuntimeSettings
     telegram: TelegramSettings
+    strategy_type: str = "dca"
+    momentum: MomentumSettings | None = None
 
 
 def _optional_decimal(value: object) -> Decimal | None:
@@ -90,6 +117,36 @@ def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
     return path
 
 
+def _format_toml_decode_error(
+    raw_text: str,
+    exc: tomllib.TOMLDecodeError,
+    *,
+    config_path: str | Path,
+) -> ValueError:
+    line_number = getattr(exc, "lineno", None)
+    column_number = getattr(exc, "colno", None)
+    lines = raw_text.splitlines()
+    line_text = ""
+    if line_number is not None and 1 <= line_number <= len(lines):
+        line_text = lines[line_number - 1].strip()
+
+    details = [f"Invalid TOML in {config_path}"]
+    if line_number is not None and column_number is not None:
+        details.append(f"at line {line_number}, column {column_number}")
+
+    if "null" in line_text.lower():
+        details.append(
+            "TOML does not support `null`; remove the key entirely to leave an optional value unset."
+        )
+    else:
+        details.append(str(exc))
+
+    if line_text:
+        details.append(f"offending_line={line_text}")
+
+    return ValueError(": ".join(details))
+
+
 def _build_app_config(
     raw: dict,
     *,
@@ -97,23 +154,41 @@ def _build_app_config(
     resolve_state_paths: bool,
 ) -> AppConfig:
     credentials = raw["credentials"]
-    dca = raw["dca"]
+    strategy = raw.get("strategy", {})
+    dca = raw.get("dca") or strategy.get("dca")
+    momentum = raw.get("momentum") or strategy.get("momentum")
     runtime = raw.get("runtime", {})
     telegram = raw.get("telegram", {})
-    state_file = (
-        _resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), config_path)
-        if resolve_state_paths
-        else Path(str(dca.get("state_file", ".gravity-dca-state.json")))
+    explicit_strategy_type = (
+        str(strategy.get("type", "")).strip().lower() if strategy.get("type") is not None else ""
     )
+    has_dca = dca is not None
+    has_momentum = momentum is not None
 
-    return AppConfig(
-        credentials=GrvtCredentials(
-            api_key=str(credentials["api_key"]),
-            private_key=str(credentials["private_key"]),
-            trading_account_id=str(credentials["trading_account_id"]),
-            environment=str(credentials.get("environment", "testnet")).lower(),
-        ),
-        dca=DcaSettings(
+    if not has_dca and not has_momentum:
+        raise ValueError("config must define either a [dca] or [momentum] section")
+    if has_dca and has_momentum:
+        raise ValueError("config cannot define both [dca] and [momentum] sections")
+
+    if explicit_strategy_type:
+        if explicit_strategy_type not in {"dca", "momentum"}:
+            raise ValueError(f"unsupported strategy.type: {explicit_strategy_type}")
+        if explicit_strategy_type == "dca" and not has_dca:
+            raise ValueError("strategy.type = 'dca' requires a [dca] section")
+        if explicit_strategy_type == "momentum" and not has_momentum:
+            raise ValueError("strategy.type = 'momentum' requires a [momentum] section")
+        strategy_type = explicit_strategy_type
+    else:
+        strategy_type = "momentum" if has_momentum else "dca"
+
+    dca_settings = None
+    if dca is not None:
+        dca_state_file = (
+            _resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), config_path)
+            if resolve_state_paths
+            else Path(str(dca.get("state_file", ".gravity-dca-state.json")))
+        )
+        dca_settings = DcaSettings(
             symbol=str(dca["symbol"]),
             side=str(dca.get("side", "buy")).lower(),
             initial_quote_amount=Decimal(str(dca["initial_quote_amount"])),
@@ -135,8 +210,59 @@ def _build_app_config(
             safety_order_volume_scale=Decimal(str(dca.get("safety_order_volume_scale", "1"))),
             stop_loss_percent=_optional_decimal(dca.get("stop_loss_percent")),
             max_cycles=int(dca["max_cycles"]) if dca.get("max_cycles") is not None else None,
-            state_file=state_file,
+            state_file=dca_state_file,
+        )
+
+    momentum_settings = None
+    if momentum is not None:
+        momentum_side = str(momentum.get("side", "buy")).lower()
+        if momentum_side != "buy":
+            raise ValueError("momentum side must be 'buy'")
+        momentum_state_file = (
+            _resolve_state_file(momentum.get("state_file", ".gravity-momentum-state.json"), config_path)
+            if resolve_state_paths
+            else Path(str(momentum.get("state_file", ".gravity-momentum-state.json")))
+        )
+        momentum_settings = MomentumSettings(
+            symbol=str(momentum["symbol"]),
+            side=momentum_side,
+            quote_amount=Decimal(str(momentum["quote_amount"])),
+            order_type=str(momentum.get("order_type", "market")).strip().lower(),
+            limit_price_offset_percent=Decimal(
+                str(momentum.get("limit_price_offset_percent", "0"))
+            ),
+            initial_leverage=_optional_decimal(momentum.get("initial_leverage")),
+            margin_type=(
+                str(momentum["margin_type"]).strip()
+                if momentum.get("margin_type") is not None
+                else None
+            ),
+            max_cycles=(
+                int(momentum["max_cycles"]) if momentum.get("max_cycles") is not None else None
+            ),
+            timeframe=str(momentum["timeframe"]),
+            ema_fast_period=int(momentum["ema_fast_period"]),
+            ema_slow_period=int(momentum["ema_slow_period"]),
+            breakout_lookback=int(momentum["breakout_lookback"]),
+            adx_period=int(momentum["adx_period"]),
+            min_adx=Decimal(str(momentum["min_adx"])),
+            atr_period=int(momentum["atr_period"]),
+            min_atr_percent=Decimal(str(momentum["min_atr_percent"])),
+            stop_atr_multiple=Decimal(str(momentum["stop_atr_multiple"])),
+            trailing_atr_multiple=Decimal(str(momentum["trailing_atr_multiple"])),
+            use_trend_failure_exit=bool(momentum.get("use_trend_failure_exit", True)),
+            take_profit_percent=_optional_decimal(momentum.get("take_profit_percent")),
+            state_file=momentum_state_file,
+        )
+
+    return AppConfig(
+        credentials=GrvtCredentials(
+            api_key=str(credentials["api_key"]),
+            private_key=str(credentials["private_key"]),
+            trading_account_id=str(credentials["trading_account_id"]),
+            environment=str(credentials.get("environment", "testnet")).lower(),
         ),
+        dca=dca_settings,
         runtime=RuntimeSettings(
             dry_run=bool(runtime.get("dry_run", True)),
             poll_seconds=int(runtime.get("poll_seconds", 30)),
@@ -170,6 +296,8 @@ def _build_app_config(
                 telegram.get("error_notification_cooldown_seconds", 300)
             ),
         ),
+        strategy_type=strategy_type,
+        momentum=momentum_settings,
     )
 
 
@@ -179,7 +307,10 @@ def load_config_text(
     config_path: str | Path = "<memory>",
     resolve_state_paths: bool = True,
 ) -> AppConfig:
-    raw = tomllib.loads(raw_text)
+    try:
+        raw = tomllib.loads(raw_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise _format_toml_decode_error(raw_text, exc, config_path=config_path) from exc
     return _build_app_config(
         raw,
         config_path=config_path,

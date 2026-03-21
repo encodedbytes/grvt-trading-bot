@@ -11,6 +11,7 @@ from .grvt_auth import GrvtPrivateSession
 from .grvt_market import GrvtMarketData
 from .grvt_models import (
     AccountFill,
+    Candle,
     FillReport,
     InitialPositionConfig,
     InstrumentMeta,
@@ -97,6 +98,23 @@ class GrvtExchange:
 
     def get_market_snapshot(self, symbol: str) -> MarketSnapshot:
         return self._market.get_market_snapshot(symbol)
+
+    def get_candles(
+        self,
+        symbol: str,
+        *,
+        timeframe: str,
+        since: int = 0,
+        limit: int = 200,
+        candle_type: str = "TRADE",
+    ) -> list[Candle]:
+        return self._market.get_candles(
+            symbol,
+            timeframe=timeframe,
+            since=since,
+            limit=limit,
+            candle_type=candle_type,
+        )
 
     def get_account_margin_type(self) -> str | None:
         return self._market.get_account_margin_type()
@@ -215,6 +233,7 @@ class GrvtExchange:
 
 __all__ = [
     "AccountFill",
+    "Candle",
     "FillReport",
     "GrvtExchange",
     "InitialPositionConfig",

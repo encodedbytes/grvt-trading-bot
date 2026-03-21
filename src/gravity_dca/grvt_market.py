@@ -8,6 +8,7 @@ from pysdk.grvt_ccxt import GrvtCcxt
 from .grvt_auth import GrvtPrivateSession
 from .grvt_models import (
     AccountFill,
+    Candle,
     InstrumentMeta,
     MarketSnapshot,
     PositionConfig,
@@ -47,6 +48,48 @@ class GrvtMarketData:
         mid = parse_grvt_decimal(ticker["mid_price"])
         last = parse_grvt_decimal(ticker["last_price"])
         return MarketSnapshot(symbol=symbol, bid=bid, ask=ask, mid=mid, last=last)
+
+    def _parse_candle(self, symbol: str, payload: dict) -> Candle:
+        return Candle(
+            symbol=symbol,
+            open_time=int(payload.get("open_time", "0")),
+            close_time=int(payload.get("close_time", "0")),
+            open=parse_grvt_decimal(payload.get("open")),
+            high=parse_grvt_decimal(payload.get("high")),
+            low=parse_grvt_decimal(payload.get("low")),
+            close=parse_grvt_decimal(payload.get("close")),
+            volume=Decimal(str(payload.get("volume_u", "0"))),
+            quote_volume=Decimal(str(payload.get("volume_q", "0"))),
+            trades=int(payload.get("trades", "0")),
+            raw=payload,
+        )
+
+    def get_candles(
+        self,
+        symbol: str,
+        *,
+        timeframe: str,
+        since: int = 0,
+        limit: int = 200,
+        candle_type: str = "TRADE",
+    ) -> list[Candle]:
+        try:
+            response = self._client.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                since=since,
+                limit=limit,
+                params={"candle_type": candle_type},
+            )
+        except Exception as exc:
+            if self._auth.is_transient_request_error(exc):
+                raise TransientExchangeError(
+                    f"GRVT fetch_ohlcv failed for {symbol} timeframe={timeframe}: {exc}"
+                ) from exc
+            raise
+        candles = [self._parse_candle(symbol, item) for item in response.get("result", [])]
+        candles.sort(key=lambda candle: candle.open_time)
+        return candles
 
     def position_config_from_payload(self, payload: dict | None) -> PositionConfig:
         if payload is None:

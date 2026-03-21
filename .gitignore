@@ -6,4 +6,5 @@ __pycache__/
 config.toml
 config.*.toml
 !config.example.toml
+!config.momentum.example.toml
 local-configs/

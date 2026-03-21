@@ -72,7 +72,7 @@ class TelegramNotifier(Notifier):
             "\n".join(
                 [
                     "GRVT bot Telegram test",
-                    f"symbol={config.dca.symbol}",
+                    f"symbol={configured_symbol(config)}",
                     f"environment={config.credentials.environment}",
                     f"dry_run={config.runtime.dry_run}",
                 ]
@@ -89,16 +89,40 @@ def build_notifier(config: AppConfig, logger: logging.Logger) -> Notifier:
 
 
 def format_startup_message(config: AppConfig) -> str:
+    side = configured_side(config)
+    order_type = configured_order_type(config)
     return "\n".join(
         [
             "GRVT bot started",
-            f"symbol={config.dca.symbol}",
-            f"side={config.dca.side}",
+            f"symbol={configured_symbol(config)}",
+            f"side={side}" if side is not None else "side=",
             f"environment={config.credentials.environment}",
             f"dry_run={config.runtime.dry_run}",
-            f"order_type={config.dca.order_type}",
+            f"order_type={order_type}" if order_type is not None else "order_type=",
         ]
     )
+
+
+def configured_symbol(config: AppConfig) -> str:
+    if config.strategy_type == "momentum":
+        if config.momentum is None:
+            raise ValueError("Momentum config is required when strategy_type is momentum")
+        return config.momentum.symbol
+    if config.dca is None:
+        raise ValueError("DCA config is required when strategy_type is dca")
+    return config.dca.symbol
+
+
+def configured_side(config: AppConfig) -> str | None:
+    if config.strategy_type == "momentum":
+        return config.momentum.side if config.momentum is not None else None
+    return config.dca.side if config.dca is not None else None
+
+
+def configured_order_type(config: AppConfig) -> str | None:
+    if config.strategy_type == "momentum":
+        return config.momentum.order_type if config.momentum is not None else None
+    return config.dca.order_type if config.dca is not None else None
 
 
 def format_recovery_message(symbol: str, decision: RecoveryDecision) -> str:
@@ -109,11 +133,14 @@ def format_recovery_message(symbol: str, decision: RecoveryDecision) -> str:
     ]
     if decision.reconstruction_message is not None:
         lines.append(f"reconstruction={decision.reconstruction_message}")
-    if decision.recovered_cycle is not None:
-        lines.append(
-            "completed_safety_orders="
-            f"{decision.recovered_cycle.completed_safety_orders}"
-        )
+    recovered_cycle = getattr(decision, "recovered_cycle", None)
+    if recovered_cycle is not None:
+        lines.append(f"completed_safety_orders={recovered_cycle.completed_safety_orders}")
+    recovered_position = getattr(decision, "recovered_position", None)
+    if recovered_position is not None:
+        lines.append(f"qty={recovered_position.total_quantity}")
+        if recovered_position.trailing_stop_price is not None:
+            lines.append(f"trailing_stop_price={recovered_position.trailing_stop_price}")
     return "\n".join(lines)
 
 

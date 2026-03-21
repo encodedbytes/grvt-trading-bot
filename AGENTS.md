@@ -4,12 +4,10 @@ Use this file only to resume work safely in a new session.
 
 ## What This Repo Is
 
-Python GRVT futures DCA bot with:
-- initial entry
-- safety-order ladder
-- take-profit exit
-- optional stop-loss exit
-- local cycle state
+Python GRVT futures bot repo with:
+- DCA bot: initial entry, safety-order ladder, take-profit, optional stop-loss
+- momentum bot: trend-plus-breakout entry with ATR/trailing-stop management
+- local state persistence and restart recovery
 - Docker and local `.venv` workflows
 
 ## Resume Checklist
@@ -31,9 +29,12 @@ Before making changes or running the bot again, check:
 - Telegram notifications are optional and one-way only.
 - Take profit is price-based, not ROE-based.
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
+- The momentum bot now has a separate runtime, state model, recovery flow, and CLI diagnostics (`status`, `thresholds`, `recovery-status`).
+- Momentum `status` now prints flat-state entry diagnostics too, including `entry_decision`, `entry_reason`, `breakout_level`, `ema_fast`, `ema_slow`, `adx`, and `atr_percent`.
 - Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
+- Optional config values should be omitted entirely when unused; TOML `null` is invalid and the loader now raises a clearer operator-facing error for that case.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
@@ -61,6 +62,7 @@ make notify-test CONFIG=config.toml
 
 Docker:
 ```bash
+make docker-image-info
 make docker-build
 make docker-up CONFIG=config.toml CONTAINER=grvt-dca-eth
 make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth
@@ -72,6 +74,10 @@ make dashboard-docker-up
 make dashboard-docker-logs
 make dashboard-docker-down
 ```
+
+Docker image defaults:
+- local Docker image tags are derived from `git describe --tags --always --dirty`
+- override with `IMAGE_TAG=...` when you want a specific local tag
 
 ## Files That Matter Most
 
