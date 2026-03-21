@@ -7,7 +7,7 @@ Use this file only to resume work safely in a new session.
 Python GRVT futures bot repo with:
 - DCA bot: initial entry, safety-order ladder, take-profit, optional stop-loss
 - momentum bot: trend-plus-breakout entry with ATR/trailing-stop management
-- grid bot: bounded long-only limit grid under active implementation
+- grid bot: bounded long-only limit grid with restart recovery and observability support
 - local state persistence and restart recovery
 - Docker and local `.venv` workflows
 
@@ -43,7 +43,8 @@ Before making changes or running the bot again, check:
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
 - The dashboard drawer now exposes whether details are coming from `bot-api`, `docker-fallback`, or `error`, and momentum signal diagnostics explicitly note when fallback mode cannot provide live signals.
-- The grid bot now has separate config, state, strategy, reconciliation, runtime, and restart recovery modules on the `grid-bot-implementation` branch; CLI/dashboard visibility is the next planned phase there.
+- The grid bot now has separate config, state, strategy, reconciliation, runtime, CLI, bot API, and dashboard support on the `grid-bot-implementation` branch.
+- Grid v1 is intentionally constrained to `side = "buy"`, `order_type = "limit"`, and `spacing_mode = "arithmetic"`.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.

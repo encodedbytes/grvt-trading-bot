@@ -20,7 +20,7 @@ Grid strategy config example:
 The repo currently includes:
 - a DCA bot with initial entry, safety orders, take profit, and optional stop loss
 - a momentum bot with trend-plus-breakout entry, ATR-based stops, and trend-failure exits
-- a grid bot in active implementation, with config, state, planner, reconciliation, runtime, and restart recovery now in place
+- a grid bot with bounded long-only limit-grid execution, restart recovery, CLI support, bot-local API support, and dashboard support
 - local state persistence and restart recovery
 - a local dashboard and bot-local read-only status API
 
@@ -76,6 +76,8 @@ For momentum configs, `make status` also prints flat-state entry diagnostics suc
 - `ema_slow`
 - `adx`
 - `atr_percent`
+
+For grid configs, `make status` prints the current band, grid level count, open buy count, inventory count, completed round trips, and the latest recovery decision.
 
 Inspect the current active cycle thresholds:
 
@@ -135,6 +137,11 @@ Supported strategy config sections now include:
 - `[momentum]`
 - `[grid]`
 
+Grid v1 constraints:
+- long-only: `side = "buy"`
+- limit-only: `order_type = "limit"`
+- arithmetic spacing only
+
 The most important settings are:
 - `environment`
 - `api_key`
@@ -188,6 +195,12 @@ For `order_type = "limit"`:
 - exit sells use an aggressive limit derived from the bid side
 - if the order is not filled within `runtime.limit_ttl_seconds`, the bot cancels it and leaves state unchanged
 
+For the grid bot:
+- the configured price band is split into fixed arithmetic levels
+- resting buy orders are maintained below market, up to `max_active_buy_orders`
+- filled inventory levels get paired sell orders one grid step above the filled buy level
+- restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
+
 ## State
 
 The bot stores cycle state in the path configured by `dca.state_file`.
@@ -204,6 +217,13 @@ State includes:
 - leverage and margin type
 - last client order id
 - last GRVT order id
+
+Grid state additionally tracks per-level order and inventory status, including:
+- open buy levels
+- inventory-bearing levels
+- paired sell orders
+- completed round trips
+- last reconciliation timestamp
 
 Use a unique `state_file` per bot instance.
 

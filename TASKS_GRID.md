@@ -1,6 +1,6 @@
 # Grid Bot Implementation Plan
 
-Status: planned
+Status: implemented through Phase 8; Phase 9 live rollout remains pending
 
 This file is the persistent implementation plan for a first-pass grid bot in this repo.
 
@@ -379,6 +379,8 @@ Delivered:
 
 ### Phase 8: Docs and Example Configs
 
+Status: implemented
+
 Goal:
 - make the grid bot operable by documentation, not tribal knowledge
 
@@ -390,6 +392,12 @@ Tasks:
 
 Completion criteria:
 - operator docs are current and explicit
+
+Delivered:
+- updated `README.md` to describe the implemented grid bot lifecycle, CLI output, state model, and strategy constraints
+- updated `AGENTS.md` so session continuity reflects that grid runtime, recovery, CLI, bot API, and dashboard work are now in place
+- kept `config.grid.example.toml` aligned with the current v1 constraints and operator defaults
+- clarified that the remaining grid work is live rollout, not missing implementation phases
 
 ### Phase 9: Live Rollout
 
