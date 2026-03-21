@@ -67,7 +67,7 @@ def fill(*, side: str, size: str, price: str, order_id: str | None, client_order
 
 def test_reconcile_grid_state_applies_missing_open_buy_order() -> None:
     decision = reconcile_grid_state(
-        state=initialized_state(),
+        state=GridBotState(),
         settings=config(),
         open_orders=[
             GridOpenOrderSnapshot(
@@ -84,9 +84,24 @@ def test_reconcile_grid_state_applies_missing_open_buy_order() -> None:
         when=datetime(2026, 3, 20, tzinfo=UTC),
     )
 
-    assert decision.action == "reconciled"
+    assert decision.action == "rebuild-from-open-orders"
     assert decision.recovered_state.level(1).status == "buy_open"
     assert decision.recovered_state.level(1).entry_order_id == "0xbuy"
+
+
+def test_reconcile_grid_state_initializes_from_config_when_local_state_is_missing() -> None:
+    decision = reconcile_grid_state(
+        state=GridBotState(),
+        settings=config(),
+        open_orders=[],
+        exchange_position=None,
+        fills=[],
+        when=datetime(2026, 3, 20, tzinfo=UTC),
+    )
+
+    assert decision.action == "initialize-from-config"
+    assert decision.recovered_state.grid is not None
+    assert len(decision.recovered_state.levels) == 5
 
 
 def test_reconcile_grid_state_clears_stale_open_buy_order_without_fill() -> None:
@@ -110,7 +125,19 @@ def test_reconcile_grid_state_clears_stale_open_buy_order_without_fill() -> None
 
 def test_reconcile_grid_state_promotes_stale_buy_order_to_inventory_when_fill_exists() -> None:
     now = datetime(2026, 3, 20, tzinfo=UTC)
-    state = initialized_state()
+    state = GridBotState()
+    expected = initialized_state()
+    state.initialize_grid(
+        symbol=expected.grid.symbol,
+        side=expected.grid.side,
+        price_band_low=expected.grid.price_band_low,
+        price_band_high=expected.grid.price_band_high,
+        grid_levels=expected.grid.grid_levels,
+        spacing_mode=expected.grid.spacing_mode,
+        quote_amount_per_level=expected.grid.quote_amount_per_level,
+        prices=[level.price for level in expected.levels],
+        when=now,
+    )
     state.open_buy_order(level_index=1, when=now, order_id="0xbuy", client_order_id="buy-1")
 
     decision = reconcile_grid_state(
@@ -131,6 +158,38 @@ def test_reconcile_grid_state_promotes_stale_buy_order_to_inventory_when_fill_ex
     assert decision.recovered_state.level(1).status == "filled_inventory"
     assert decision.recovered_state.level(1).entry_fill_price == Decimal("1900")
     assert decision.recovered_state.active_inventory_levels == 1
+
+
+def test_reconcile_grid_state_rebuilds_sell_inventory_from_empty_local_state() -> None:
+    now = datetime(2026, 3, 20, tzinfo=UTC)
+
+    decision = reconcile_grid_state(
+        state=GridBotState(),
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="sell",
+                price=Decimal("2000"),
+                size=Decimal("0.05"),
+                order_id="0xsell",
+                client_order_id="sell-1",
+            )
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.05"),
+            average_entry_price=Decimal("1900"),
+        ),
+        fills=[fill(side="buy", size="0.05", price="1900", order_id="0xbuy", client_order_id="buy-1")],
+        when=now,
+    )
+
+    assert decision.action == "rebuild-from-open-orders-and-fills"
+    assert decision.recovered_state.level(1).status == "sell_open"
+    assert decision.recovered_state.level(1).entry_fill_price == Decimal("1900")
+    assert decision.recovered_state.level(1).exit_order_id == "0xsell"
 
 
 def test_reconcile_grid_state_promotes_inventory_to_open_sell_order() -> None:

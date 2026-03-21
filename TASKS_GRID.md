@@ -334,6 +334,8 @@ Delivered:
 
 ### Phase 6: Recovery
 
+Status: implemented
+
 Goal:
 - make restart behavior operationally safe
 
@@ -344,6 +346,13 @@ Tasks:
 
 Completion criteria:
 - restart scenarios are covered in tests
+
+Delivered:
+- tightened `gravity_dca.grid_recovery` to classify restart outcomes explicitly, including `initialize-from-config`, `rebuild-from-open-orders`, and `rebuild-from-open-orders-and-fills`
+- covered empty-local-state restart scenarios instead of relying only on already-populated local state
+- allowed sell-side recovery to rebuild source inventory from buy fills mapped back to the originating grid level when local order IDs are missing
+- preserved fail-safe behavior for ambiguous order mapping and exchange inventory mismatches
+- added restart-focused tests for config initialization, rebuilding open buys, and rebuilding sell-side inventory from live exchange state
 
 ### Phase 7: CLI, Bot API, and Dashboard
 

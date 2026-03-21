@@ -113,6 +113,28 @@ def _matching_fill(level: GridLevelState, fills: list[AccountFill], *, side: str
     return sorted(candidates, key=lambda item: item.event_time)[-1]
 
 
+def _matching_fill_by_level(
+    settings: GridSettings,
+    fills: list[AccountFill],
+    *,
+    side: str,
+    level_index: int,
+) -> AccountFill | None:
+    candidates: list[AccountFill] = []
+    for fill in fills:
+        if fill.side != side or fill.symbol != settings.symbol:
+            continue
+        try:
+            fill_level_index = _level_for_price(settings, fill.price)
+        except ValueError:
+            continue
+        if fill_level_index == level_index:
+            candidates.append(fill)
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: item.event_time)[-1]
+
+
 def _clear_stale_buy(level: GridLevelState) -> None:
     level.status = "idle"
     level.entry_order_id = None
@@ -142,8 +164,11 @@ def reconcile_grid_state(
     fills: list[AccountFill],
     when: datetime,
 ) -> GridRecoveryDecision:
+    local_grid_missing = state.grid is None
     recovered = _ensure_initialized(state, settings, when)
     changes: list[str] = []
+    if local_grid_missing:
+        changes.append("initialized")
 
     order_levels: dict[tuple[str, int], GridOpenOrderSnapshot] = {}
     for order in open_orders:
@@ -222,9 +247,26 @@ def reconcile_grid_state(
                 changes.append(f"buy-filled:{level_index}")
                 level = recovered.level(level_index)
             if level.status == "idle":
-                raise ValueError(
-                    f"Open sell order has no matching inventory for level: level_index={level_index}"
+                fill = _matching_fill_by_level(
+                    settings,
+                    fills,
+                    side="buy",
+                    level_index=level_index,
                 )
+                if fill is None:
+                    raise ValueError(
+                        f"Open sell order has no matching inventory for level: level_index={level_index}"
+                    )
+                recovered.mark_buy_filled(
+                    level_index=level_index,
+                    when=when,
+                    fill_price=fill.price,
+                    quantity=fill.size,
+                    order_id=fill.order_id,
+                    client_order_id=fill.client_order_id,
+                )
+                changes.append(f"buy-filled:{level_index}")
+                level = recovered.level(level_index)
             level.status = "sell_open"
             level.exit_order_id = order.order_id
             level.exit_client_order_id = order.client_order_id
@@ -255,9 +297,22 @@ def reconcile_grid_state(
     recovered.mark_reconciled(when)
 
     if recovered != state:
+        if local_grid_missing:
+            if any(change.startswith("buy-filled:") or change.startswith("sell-filled:") for change in changes):
+                action = "rebuild-from-open-orders-and-fills"
+                message = "Rebuilt grid state from open orders and exchange fills."
+            elif open_orders:
+                action = "rebuild-from-open-orders"
+                message = "Rebuilt grid state from live open orders."
+            else:
+                action = "initialize-from-config"
+                message = "Initialized grid state from the configured grid definition."
+        else:
+            action = "reconciled"
+            message = "Grid state reconciled from open orders and fills." if changes else "Grid state refreshed."
         return GridRecoveryDecision(
-            action="reconciled",
-            message="Grid state reconciled from open orders and fills." if changes else "Grid state refreshed.",
+            action=action,
+            message=message,
             recovered_state=recovered,
         )
     return GridRecoveryDecision(

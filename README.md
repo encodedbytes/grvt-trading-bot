@@ -20,6 +20,7 @@ Grid strategy config example:
 The repo currently includes:
 - a DCA bot with initial entry, safety orders, take profit, and optional stop loss
 - a momentum bot with trend-plus-breakout entry, ATR-based stops, and trend-failure exits
+- a grid bot in active implementation, with config, state, planner, reconciliation, runtime, and restart recovery now in place
 - local state persistence and restart recovery
 - a local dashboard and bot-local read-only status API
 
@@ -125,7 +126,14 @@ make dashboard-docker-run
 
 Start from [config.example.toml](config.example.toml).
 
-Momentum configs can start from [config.momentum.example.toml](config.momentum.example.toml). Both DCA and momentum bot runs are supported.
+Momentum configs can start from [config.momentum.example.toml](config.momentum.example.toml).
+
+Grid configs can start from [config.grid.example.toml](config.grid.example.toml).
+
+Supported strategy config sections now include:
+- `[dca]`
+- `[momentum]`
+- `[grid]`
 
 The most important settings are:
 - `environment`
@@ -185,6 +193,8 @@ For `order_type = "limit"`:
 The bot stores cycle state in the path configured by `dca.state_file`.
 
 Momentum state is stored separately in the path configured by `momentum.state_file`.
+
+Grid state is stored separately in the path configured by `grid.state_file`.
 
 State includes:
 - symbol and side
