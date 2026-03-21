@@ -648,6 +648,13 @@ HTML_PAGE = """<!doctype html>
               + '<dt>Timeframe</dt><dd>' + esc(bot.timeframe) + '</dd>'
               + '<dt>Dry run</dt><dd>' + (bot.dry_run ? 'true' : 'false') + '</dd>'
             + '</dl>';
+      } else if (bot.strategy_type === "grid") {
+        primaryStats = '<dl>'
+            + '<dt>Band</dt><dd>' + esc(bot.price_band_low) + ' - ' + esc(bot.price_band_high) + '</dd>'
+            + '<dt>Grid levels</dt><dd>' + esc(bot.grid_levels) + '</dd>'
+            + '<dt>Open buys</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_buy_orders : 0) + '</dd>'
+            + '<dt>Inventory</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_inventory_levels : 0) + '</dd>'
+          + '</dl>';
       } else {
         primaryStats = bot.active_trade
           ? '<dl>'
@@ -715,6 +722,17 @@ HTML_PAGE = """<!doctype html>
               + '<dt>Timeframe</dt><dd>' + esc(bot.timeframe) + '</dd>'
               + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
             + '</dl>';
+      } else if (bot.strategy_type === "grid") {
+        activeCycle = '<dl>'
+            + '<dt>Band low</dt><dd>' + esc(bot.price_band_low) + '</dd>'
+            + '<dt>Band high</dt><dd>' + esc(bot.price_band_high) + '</dd>'
+            + '<dt>Grid levels</dt><dd>' + esc(bot.grid_levels) + '</dd>'
+            + '<dt>Spacing</dt><dd>' + esc(bot.spacing_mode) + '</dd>'
+            + '<dt>Open buys</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_buy_orders : 0) + '</dd>'
+            + '<dt>Inventory</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_inventory_levels : 0) + '</dd>'
+            + '<dt>Round trips</dt><dd>' + esc(bot.completed_round_trips || bot.completed_cycles) + '</dd>'
+            + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
+          + '</dl>';
       } else {
         activeCycle = bot.active_trade
           ? '<dl>'
@@ -760,7 +778,7 @@ HTML_PAGE = """<!doctype html>
         + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
         + '<dt>Poll seconds</dt><dd>' + esc(bot.poll_seconds) + '</dd>'
         + '</dl>'
-        + '<div class="section"><h2>' + (bot.active_trade ? (bot.strategy_type === "momentum" ? 'Active Position' : 'Active Cycle') : 'Idle State') + '</h2>' + activeCycle + '</div>'
+        + '<div class="section"><h2>' + (bot.active_trade ? (bot.strategy_type === "momentum" ? 'Active Position' : (bot.strategy_type === "grid" ? 'Grid Runtime' : 'Active Cycle')) : 'Idle State') + '</h2>' + activeCycle + '</div>'
         + '</div>'
         + '<div class="card-secondary">'
         + closedCycle
@@ -816,6 +834,16 @@ HTML_PAGE = """<!doctype html>
                 field("Min ADX", bot.min_adx),
                 field("Min ATR %", bot.min_atr_percent),
                 field("TP %", bot.take_profit_percent)
+              ]
+            : bot.strategy_type === "grid"
+            ? [
+                field("Band low", bot.price_band_low),
+                field("Band high", bot.price_band_high),
+                field("Grid levels", bot.grid_levels),
+                field("Spacing", bot.spacing_mode),
+                field("Quote / level", bot.quote_amount_per_level || bot.initial_quote_amount),
+                field("Max open buys", bot.max_active_buy_orders),
+                field("Max inventory", bot.max_inventory_levels)
               ]
             : [
                 field("Initial quote", bot.initial_quote_amount),
@@ -896,7 +924,7 @@ HTML_PAGE = """<!doctype html>
           document.getElementById("drawer-title").textContent = bot.symbol;
           document.getElementById("drawer-subtitle").textContent = bot.container_name + " • " + bot.environment + " • " + bot.container_state + " • " + bot.lifecycle_state;
           if (bot.active_trade) {
-            sections.push(renderDrawerSection(bot.active_trade_kind === 'position' ? "Active position" : "Active cycle", bot.strategy_type === "momentum"
+            sections.push(renderDrawerSection(bot.active_trade_kind === 'position' ? "Active position" : (bot.strategy_type === "grid" ? "Grid runtime" : "Active cycle"), bot.strategy_type === "momentum"
               ? [
                   field("Started at", formatDateTime(bot.active_trade.started_at)),
                   field("Side", bot.active_trade.side),
@@ -911,6 +939,14 @@ HTML_PAGE = """<!doctype html>
                   field("Last order id", bot.active_trade.last_order_id),
                   field("Last client id", bot.active_trade.last_client_order_id)
                 ]
+              : bot.strategy_type === "grid"
+              ? [
+                  field("Started at", formatDateTime(bot.active_trade.started_at)),
+                  field("Open buy orders", bot.active_trade.active_buy_orders),
+                  field("Inventory levels", bot.active_trade.active_inventory_levels),
+                  field("Round trips", bot.active_trade.completed_round_trips),
+                  field("Last reconciled", formatDateTime(bot.active_trade.last_reconciled_at))
+                ]
               : [
                   field("Started at", formatDateTime(bot.active_trade.started_at)),
                   field("Side", bot.active_trade.side),
@@ -924,6 +960,15 @@ HTML_PAGE = """<!doctype html>
                   field("Next trigger", bot.thresholds.next_safety_trigger_price)
                 ]
             ));
+          }
+          if (bot.strategy_type === "grid" && bot.levels && bot.levels.length) {
+            sections.push(renderDrawerSection("Grid levels", bot.levels.map(function(level) {
+              var text = [level.price, level.status];
+              if (level.entry_quantity) text.push('qty=' + level.entry_quantity);
+              if (level.entry_fill_price) text.push('entry=' + level.entry_fill_price);
+              if (level.exit_fill_price) text.push('exit=' + level.exit_fill_price);
+              return field('Level ' + level.level_index, text.join(' • '));
+            })));
           }
           if (bot.last_closed_trade) {
             sections.push(renderDrawerSection(bot.last_closed_trade_kind === 'position' ? "Last closed position" : "Last closed cycle", [

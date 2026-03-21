@@ -356,6 +356,8 @@ Delivered:
 
 ### Phase 7: CLI, Bot API, and Dashboard
 
+Status: implemented
+
 Goal:
 - make the grid bot observable with the existing operator tooling
 
@@ -366,6 +368,14 @@ Tasks:
 
 Completion criteria:
 - dashboard and CLI show useful grid runtime state
+
+Delivered:
+- extended `cli.py` to support grid `status`, `thresholds`, `recovery-status`, and runtime selection
+- extended `status_snapshot.py` and `bot_api.py` so grid bots can expose `/status` through the shared bot-local API
+- normalized grid payloads through `dashboard_payload.py` instead of introducing a dashboard-only schema
+- added grid fallback/API support in `dashboard.py`
+- added grid-specific card and drawer sections in `dashboard_template.py`
+- added regression coverage for grid CLI output, shared status snapshots, bot API snapshots, dashboard payload normalization, and dashboard rendering
 
 ### Phase 8: Docs and Example Configs
 

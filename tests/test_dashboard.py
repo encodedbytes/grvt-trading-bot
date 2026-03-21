@@ -7,6 +7,7 @@ import subprocess
 from gravity_dca import dashboard
 from gravity_dca import dashboard_runtime
 from gravity_dca.config import load_config_text
+from gravity_dca.grid_state import GridBotState, save_grid_state
 from gravity_dca.momentum_state import MomentumBotState, save_momentum_state
 from gravity_dca.state import BotState
 import pytest
@@ -168,6 +169,77 @@ bot_api_port = 8788
     assert summary["bot_api_port"] == 8788
     assert summary["detail_source"] == "docker-fallback"
     assert summary["signal_status"] == "fallback-unavailable"
+
+
+def test_summarize_bot_container_with_grid_state(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "config.grid.eth.toml"
+    state_path = tmp_path / "state" / ".gravity-grid-eth.json"
+    config_path.write_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+bot_api_port = 8789
+"""
+    )
+    state = GridBotState()
+    state.initialize_grid(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        price_band_low=Decimal("1800"),
+        price_band_high=Decimal("2200"),
+        grid_levels=5,
+        spacing_mode="arithmetic",
+        quote_amount_per_level=Decimal("100"),
+        prices=[Decimal("1800"), Decimal("1900"), Decimal("2000"), Decimal("2100"), Decimal("2200")],
+        when=dashboard.datetime.now(tz=dashboard.UTC),
+    )
+    state.mark_buy_filled(
+        level_index=1,
+        when=dashboard.datetime.now(tz=dashboard.UTC),
+        fill_price=Decimal("1900"),
+        quantity=Decimal("0.05"),
+    )
+    save_grid_state(state_path, state)
+
+    monkeypatch.setattr(dashboard, "_load_recent_log_info", lambda name: (None, "ok"))
+    monkeypatch.setattr(dashboard, "_fetch_bot_status_from_api", lambda container, port: None)
+    container = dashboard.DockerContainer(
+        id="grid123",
+        name="grvt-grid-eth",
+        image="gravity-dca-bot:local",
+        status="Up 2 minutes",
+        config_source=config_path,
+        state_source=tmp_path / "state",
+        network_ips=[],
+    )
+
+    summary = dashboard.summarize_bot_container(container)
+
+    assert summary["strategy_type"] == "grid"
+    assert summary["symbol"] == "ETH_USDT_Perp"
+    assert summary["price_band_low"] == "1800"
+    assert summary["active_trade"]["active_inventory_levels"] == 1
+    assert summary["levels"][1]["status"] == "filled_inventory"
 
 
 def test_collect_dashboard_payload_counts_inactive_max_cycles(monkeypatch) -> None:
@@ -665,6 +737,13 @@ def test_dashboard_html_surfaces_momentum_signal_details() -> None:
     assert 'field("Detail source", bot.detail_source)' in dashboard.HTML_PAGE
     assert 'field("Signal status", bot.signal_status)' in dashboard.HTML_PAGE
     assert 'field("Signal note", bot.signal_note)' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_surfaces_grid_runtime_details() -> None:
+    assert "bot.strategy_type === \"grid\"" in dashboard.HTML_PAGE
+    assert "field(\"Band low\", bot.price_band_low)" in dashboard.HTML_PAGE
+    assert "field(\"Grid levels\", bot.grid_levels)" in dashboard.HTML_PAGE
+    assert "renderDrawerSection(\"Grid levels\"" in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_formats_timestamps_with_intl() -> None:

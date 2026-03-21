@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import AppConfig
+from .grid_state import GridBotState
 from .momentum_strategy import MomentumIndicatorSnapshot
 from .momentum_state import MomentumBotState
 from .momentum_strategy import fixed_take_profit_price
@@ -103,13 +104,34 @@ def serialize_momentum_position(position: Any) -> dict[str, str | None]:
     }
 
 
+def serialize_grid_level(level: Any) -> dict[str, str | int | None]:
+    return {
+        "level_index": level.level_index,
+        "price": str(level.price),
+        "status": level.status,
+        "entry_order_id": level.entry_order_id,
+        "entry_client_order_id": level.entry_client_order_id,
+        "entry_fill_price": str(level.entry_fill_price) if level.entry_fill_price is not None else None,
+        "entry_quantity": str(level.entry_quantity) if level.entry_quantity is not None else None,
+        "exit_order_id": level.exit_order_id,
+        "exit_client_order_id": level.exit_client_order_id,
+        "exit_fill_price": str(level.exit_fill_price) if level.exit_fill_price is not None else None,
+        "realized_pnl_estimate": (
+            str(level.realized_pnl_estimate) if level.realized_pnl_estimate is not None else None
+        ),
+        "updated_at": level.updated_at,
+    }
+
+
 def build_status_snapshot(
     config: AppConfig,
-    state: BotState | MomentumBotState,
+    state: BotState | MomentumBotState | GridBotState,
     runtime: RuntimeStatus,
 ) -> dict[str, Any]:
     if config.strategy_type == "momentum":
         return _build_momentum_status_snapshot(config, state, runtime)
+    if config.strategy_type == "grid":
+        return _build_grid_status_snapshot(config, state, runtime)
     return _build_dca_status_snapshot(config, state, runtime)
 
 
@@ -269,6 +291,85 @@ def _build_momentum_status_snapshot(
             if state.last_closed_position is not None
             else None
         ),
+        "runtime_status": {
+            "started_at": runtime.started_at,
+            "last_iteration_started_at": runtime.last_iteration_started_at,
+            "last_iteration_completed_at": runtime.last_iteration_completed_at,
+            "last_iteration_succeeded_at": runtime.last_iteration_succeeded_at,
+            "last_iteration_error": runtime.last_iteration_error,
+            "last_iteration_error_at": runtime.last_iteration_error_at,
+            "risk_reduce_only": runtime.risk_reduce_only,
+            "risk_reduce_only_reason": runtime.risk_reduce_only_reason,
+            "risk_reduce_only_at": runtime.risk_reduce_only_at,
+            "strategy_status": runtime.strategy_status,
+        },
+    }
+
+
+def _build_grid_status_snapshot(
+    config: AppConfig,
+    state: GridBotState,
+    runtime: RuntimeStatus,
+) -> dict[str, Any]:
+    settings = config.grid
+    if settings is None:
+        raise ValueError("Grid config is required for grid status snapshots")
+
+    active_buy_orders = sum(1 for level in state.levels if level.status == "buy_open")
+    active_inventory_levels = sum(
+        1 for level in state.levels if level.status in {"filled_inventory", "sell_open"}
+    )
+    lifecycle_state = "idle"
+    if active_buy_orders > 0 or active_inventory_levels > 0:
+        lifecycle_state = "active"
+
+    active_grid = None
+    if state.grid is not None and (active_buy_orders > 0 or active_inventory_levels > 0):
+        active_grid = {
+            "started_at": state.started_at,
+            "active_buy_orders": active_buy_orders,
+            "active_inventory_levels": active_inventory_levels,
+            "completed_round_trips": state.completed_round_trips,
+            "last_reconciled_at": state.last_reconciled_at,
+        }
+
+    return {
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+        "symbol": settings.symbol,
+        "environment": config.credentials.environment,
+        "strategy_type": "grid",
+        "order_type": settings.order_type,
+        "dry_run": config.runtime.dry_run,
+        "state_file": str(settings.state_file),
+        "lifecycle_state": lifecycle_state,
+        "initial_leverage": (
+            str(settings.initial_leverage) if settings.initial_leverage is not None else None
+        ),
+        "margin_type": settings.margin_type,
+        "poll_seconds": config.runtime.poll_seconds,
+        "bot_api_port": config.runtime.bot_api_port,
+        "price_band_low": str(settings.price_band_low),
+        "price_band_high": str(settings.price_band_high),
+        "grid_levels": settings.grid_levels,
+        "spacing_mode": settings.spacing_mode,
+        "quote_amount_per_level": str(settings.quote_amount_per_level),
+        "max_active_buy_orders": settings.max_active_buy_orders,
+        "max_inventory_levels": settings.max_inventory_levels,
+        "telegram_enabled": config.telegram.enabled,
+        "completed_cycles": state.completed_round_trips,
+        "completed_round_trips": state.completed_round_trips,
+        "max_cycles": None,
+        "active_grid": active_grid,
+        "levels": [serialize_grid_level(level) for level in state.levels],
+        "thresholds": {
+            "take_profit_price": None,
+            "stop_loss_price": None,
+            "next_safety_trigger_price": None,
+            "initial_stop_price": None,
+            "trailing_stop_price": None,
+            "fixed_take_profit_price": None,
+        },
+        "last_closed_position": None,
         "runtime_status": {
             "started_at": runtime.started_at,
             "last_iteration_started_at": runtime.last_iteration_started_at,

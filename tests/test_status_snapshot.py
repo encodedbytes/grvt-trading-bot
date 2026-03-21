@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from gravity_dca.config import load_config_text
+from gravity_dca.grid_state import GridBotState
 from gravity_dca.momentum_state import MomentumBotState
 from gravity_dca.state import ActiveCycleState, BotState
 from gravity_dca.status_snapshot import (
@@ -247,3 +248,70 @@ poll_seconds = 30
 
     assert snapshot["runtime_status"]["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
     assert snapshot["runtime_status"]["strategy_status"]["indicator_snapshot"]["atr_percent"] == "0.34"
+
+
+def test_build_status_snapshot_supports_grid_runtime_state() -> None:
+    config = load_config_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/grid.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        config_path=Path("/app/config.toml"),
+        resolve_state_paths=False,
+    )
+    state = GridBotState()
+    state.initialize_grid(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        price_band_low=Decimal("1800"),
+        price_band_high=Decimal("2200"),
+        grid_levels=5,
+        spacing_mode="arithmetic",
+        quote_amount_per_level=Decimal("100"),
+        prices=[
+            Decimal("1800"),
+            Decimal("1900"),
+            Decimal("2000"),
+            Decimal("2100"),
+            Decimal("2200"),
+        ],
+        when=__import__("datetime").datetime(2026, 3, 20, tzinfo=__import__("datetime").timezone.utc),
+    )
+    state.mark_buy_filled(
+        level_index=1,
+        when=__import__("datetime").datetime(2026, 3, 20, tzinfo=__import__("datetime").timezone.utc),
+        fill_price=Decimal("1900"),
+        quantity=Decimal("0.05"),
+    )
+
+    snapshot = build_status_snapshot(
+        config,
+        state,
+        RuntimeStatus(started_at="2026-03-20T00:00:00+00:00"),
+    )
+
+    assert snapshot["strategy_type"] == "grid"
+    assert snapshot["lifecycle_state"] == "active"
+    assert snapshot["price_band_low"] == "1800"
+    assert snapshot["active_grid"]["active_inventory_levels"] == 1
+    assert snapshot["levels"][1]["status"] == "filled_inventory"
