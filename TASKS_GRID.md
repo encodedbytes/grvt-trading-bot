@@ -284,6 +284,8 @@ Delivered:
 
 ### Phase 4: Exchange/Order Reconciliation
 
+Status: implemented
+
 Goal:
 - add the order and fill reconciliation needed for a safe grid runtime
 
@@ -295,6 +297,14 @@ Tasks:
 
 Completion criteria:
 - recovery and reconciliation tests cover stale orders, missing orders, and filled transitions
+
+Delivered:
+- added `gravity_dca.grid_recovery` with a normalized open-order snapshot and strict reconciliation flow
+- mapped open buy orders by level price and mapped open sell orders back to their source inventory levels
+- clear stale local orders only when no unambiguous matching fill exists
+- promote filled transitions only when fills match known order IDs or client order IDs
+- validate aggregate local inventory quantity against the live exchange position
+- added reconciliation tests for missing orders, stale orders, filled transitions, duplicate open orders, and exchange mismatch cases
 
 ### Phase 5: Bot Orchestration
 
