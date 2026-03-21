@@ -401,6 +401,8 @@ Delivered:
 
 ### Phase 9: Live Rollout
 
+Status: in progress
+
 Goal:
 - validate the first grid bot safely on GRVT
 
@@ -412,6 +414,19 @@ Tasks:
 
 Completion criteria:
 - at least one full buy-fill -> sell-fill round trip completes without manual intervention
+
+Current rollout prep:
+- added a conservative dry-run ETH config at `local-configs/config.grid.eth.toml`
+- initial defaults use:
+  - `symbol = "ETH_USDT_Perp"`
+  - `initial_leverage = "3"`
+  - `price_band_low = "2050"`
+  - `price_band_high = "2250"`
+  - `grid_levels = 6`
+  - `quote_amount_per_level = "50"`
+  - `max_active_buy_orders = 2`
+  - `max_inventory_levels = 2`
+  - `dry_run = true`
 
 ## Recommended Initial Defaults
 

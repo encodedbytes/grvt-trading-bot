@@ -46,10 +46,28 @@ class GrvtPrivateSession:
         message = str(response.get("message", "")).lower()
         return status == 401 or code == 1000 and "authenticate prior" in message
 
+    def _credential_error_from_response(self, response: requests.Response) -> ValueError | None:
+        text = response.text[:200]
+        normalized = text.lower()
+        if "api_key not found" in normalized:
+            return ValueError(
+                "GRVT auth failed: invalid or unknown API key for the configured environment/account. "
+                f"response={text}"
+            )
+        if "invalid api key" in normalized:
+            return ValueError(
+                "GRVT auth failed: invalid API key for the configured environment/account. "
+                f"response={text}"
+            )
+        return None
+
     def _sync_sdk_auth_session(self, response: requests.Response) -> None:
         cookie = SimpleCookie()
         cookie.load(response.headers.get("Set-Cookie", ""))
         if "gravity" not in cookie:
+            credential_error = self._credential_error_from_response(response)
+            if credential_error is not None:
+                raise credential_error
             raise ValueError(f"GRVT auth did not return a session cookie: {response.text[:200]}")
         expires_at = datetime.strptime(
             cookie["gravity"]["expires"],
@@ -79,6 +97,9 @@ class GrvtPrivateSession:
                     timeout=10,
                 )
                 if not response.ok:
+                    credential_error = self._credential_error_from_response(response)
+                    if credential_error is not None:
+                        raise credential_error
                     message = (
                         f"GRVT auth failed with HTTP {response.status_code}: "
                         f"{response.text[:200]}"

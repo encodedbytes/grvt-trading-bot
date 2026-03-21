@@ -172,6 +172,31 @@ def test_ensure_private_auth_updates_sdk_session_headers(monkeypatch) -> None:
     assert session._client._session.headers["X-Grvt-Account-Id"] == "abc123"
 
 
+def test_ensure_private_auth_reports_invalid_api_key_clearly(monkeypatch) -> None:
+    session = auth_session(1)
+
+    def fake_post(*args, **kwargs):
+        return SimpleNamespace(
+            ok=True,
+            headers={},
+            text='{"error":"ent: api_key not found","status":"failure"}',
+        )
+
+    monkeypatch.setattr("gravity_dca.grvt_auth.requests.post", fake_post)
+    monkeypatch.setattr(
+        "gravity_dca.grvt_auth.get_grvt_endpoint",
+        lambda env, endpoint: "https://edge.grvt.io/auth/api_key/login",
+    )
+
+    try:
+        session.ensure_private_auth()
+    except ValueError as exc:
+        assert "invalid or unknown API key" in str(exc)
+        assert "api_key not found" in str(exc)
+    else:
+        raise AssertionError("ValueError was not raised")
+
+
 def test_get_candles_parses_and_sorts_results() -> None:
     client = SimpleNamespace(
         fetch_ohlcv=lambda **kwargs: {
