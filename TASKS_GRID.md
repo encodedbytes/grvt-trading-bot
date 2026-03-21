@@ -239,6 +239,8 @@ Delivered:
 
 ### Phase 2: State Model
 
+Status: implemented
+
 Goal:
 - add dedicated grid state persistence
 
@@ -250,6 +252,12 @@ Tasks:
 
 Completion criteria:
 - grid state persistence round-trips cleanly
+
+Delivered:
+- added dedicated `gravity_dca.grid_state` persistence for aggregate grid state and per-level order/inventory state
+- added explicit level statuses for `idle`, `buy_open`, `filled_inventory`, and `sell_open`
+- added safe mutation helpers for initializing grids, opening buy/sell orders, marking fills, and recording reconciliation timestamps
+- added round-trip and validation tests for grid state behavior
 
 ### Phase 3: Pure Grid Strategy Layer
 
