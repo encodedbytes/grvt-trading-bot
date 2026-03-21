@@ -77,7 +77,7 @@ For momentum configs, `make status` also prints flat-state entry diagnostics suc
 - `adx`
 - `atr_percent`
 
-For grid configs, `make status` prints the current band, grid level count, open buy count, inventory count, completed round trips, and the latest recovery decision.
+For grid configs, `make status` prints the current band, grid level count, open buy count, inventory count, seed-on-start mode, completed round trips, and the latest recovery decision.
 
 Inspect the current active cycle thresholds:
 
@@ -142,6 +142,11 @@ Grid v1 constraints:
 - limit-only: `order_type = "limit"`
 - arithmetic spacing only
 
+Grid v1 optional startup behavior:
+- `seed_enabled = true` places one market buy on fresh grid initialization
+- the seed inventory is assigned to the highest configured grid level below market
+- after that fill, the bot resumes normal paired-sell grid behavior
+
 The most important settings are:
 - `environment`
 - `api_key`
@@ -198,6 +203,7 @@ For `order_type = "limit"`:
 For the grid bot:
 - the configured price band is split into fixed arithmetic levels
 - resting buy orders are maintained below market, up to `max_active_buy_orders`
+- optional `seed_enabled = true` places one startup market buy on the highest grid level below market, once per fresh grid initialization
 - filled inventory levels get paired sell orders one grid step above the filled buy level
 - restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
 
@@ -224,6 +230,8 @@ Grid state additionally tracks per-level order and inventory status, including:
 - paired sell orders
 - completed round trips
 - last reconciliation timestamp
+
+When `grid.seed_enabled = true`, the first startup seed fill is stored as normal grid inventory on its assigned level, so later sell pairing and recovery still use the standard per-level lifecycle.
 
 Use a unique `state_file` per bot instance.
 

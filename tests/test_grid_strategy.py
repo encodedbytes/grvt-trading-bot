@@ -3,7 +3,12 @@ from decimal import Decimal
 
 from gravity_dca.config import load_config_text
 from gravity_dca.grid_state import GridBotState
-from gravity_dca.grid_strategy import build_grid_levels, paired_sell_price, plan_grid_orders
+from gravity_dca.grid_strategy import (
+    build_grid_levels,
+    paired_sell_price,
+    plan_grid_orders,
+    seed_level_index,
+)
 
 
 UTC = timezone.utc
@@ -132,6 +137,12 @@ def test_plan_grid_orders_marks_stale_buy_orders_for_cancellation() -> None:
     )
 
     assert decision.cancel_buy_level_indices == [3]
+
+
+def test_seed_level_index_returns_highest_buyable_level_below_market() -> None:
+    assert seed_level_index(settings=config(), market_price=Decimal("2050")) == 2
+    assert seed_level_index(settings=config(), market_price=Decimal("1810")) == 0
+    assert seed_level_index(settings=config(), market_price=Decimal("1800")) is None
 
 
 def test_paired_sell_price_returns_none_for_top_level() -> None:

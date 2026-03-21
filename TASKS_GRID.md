@@ -417,6 +417,7 @@ Completion criteria:
 
 Current rollout prep:
 - added a conservative dry-run ETH config at `local-configs/config.grid.eth.toml`
+- added optional `seed_enabled = true` support for operators who want one startup market buy before the normal passive grid lifecycle begins
 - initial defaults use:
   - `symbol = "ETH_USDT_Perp"`
   - `initial_leverage = "3"`
@@ -427,6 +428,10 @@ Current rollout prep:
   - `max_active_buy_orders = 2`
   - `max_inventory_levels = 2`
   - `dry_run = true`
+
+Live rollout notes:
+- `seed_enabled = true` is optional and should be treated as a higher-turnover startup mode, not the default safe mode
+- the seed buy is assigned to the highest configured buy level below market, then exits through the normal paired-sell path
 
 ## Recommended Initial Defaults
 

@@ -45,6 +45,7 @@ Before making changes or running the bot again, check:
 - The dashboard drawer now exposes whether details are coming from `bot-api`, `docker-fallback`, or `error`, and momentum signal diagnostics explicitly note when fallback mode cannot provide live signals.
 - The grid bot now has separate config, state, strategy, reconciliation, runtime, CLI, bot API, and dashboard support on the `grid-bot-implementation` branch.
 - Grid v1 is intentionally constrained to `side = "buy"`, `order_type = "limit"`, and `spacing_mode = "arithmetic"`.
+- Grid configs can optionally set `seed_enabled = true` to place one startup market buy on fresh grid initialization, then continue with the normal paired-sell lifecycle from that seeded inventory.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.

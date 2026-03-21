@@ -8,6 +8,7 @@ from gravity_dca.config import load_config_text
 from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, PositionSnapshot
 from gravity_dca.grid_bot import GridBot
 from gravity_dca.grid_state import GridBotState
+from gravity_dca.grvt_models import FillReport
 from gravity_dca.grid_strategy import build_grid_levels
 from gravity_dca.telegram import format_startup_message
 
@@ -55,11 +56,20 @@ class FakeNotifier:
 
 
 class FakeExchange:
-    def __init__(self, *, market_price: str, open_orders=None, open_position=None, fills=None) -> None:
+    def __init__(
+        self,
+        *,
+        market_price: str,
+        open_orders=None,
+        open_position=None,
+        fills=None,
+        fill_reports=None,
+    ) -> None:
         self.market_price = Decimal(market_price)
         self._open_orders = list(open_orders or [])
         self._open_position = open_position
         self._fills = list(fills or [])
+        self._fill_reports = list(fill_reports or [])
         self.placed_orders: list[dict] = []
         self.canceled_orders: list[dict] = []
 
@@ -111,6 +121,26 @@ class FakeExchange:
     def cancel_order(self, **kwargs):
         self.canceled_orders.append(kwargs)
         return True
+
+    def wait_for_fill(
+        self,
+        *,
+        symbol: str,
+        order_type: str,
+        client_order_id: str,
+        timeout_seconds: int,
+        poll_seconds: int,
+    ):
+        if self._fill_reports:
+            return self._fill_reports.pop(0)
+        return FillReport(
+            order_id="0xfill",
+            client_order_id=client_order_id,
+            status="FILLED",
+            traded_size=Decimal("0.05"),
+            avg_fill_price=self.market_price,
+            raw={},
+        )
 
 
 def initialized_state() -> GridBotState:
@@ -336,3 +366,69 @@ poll_seconds = 30
     assert bot._exchange.placed_orders == []
     assert saved[-1].level(2).status == "buy_open"
     assert saved[-1].level(1).status == "buy_open"
+
+
+def test_grid_bot_places_optional_seed_order_once_on_fresh_start(monkeypatch) -> None:
+    saved: list[GridBotState] = []
+    bot = GridBot.__new__(GridBot)
+    bot._config = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+seed_enabled = true
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        resolve_state_paths=False,
+    )
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(
+        market_price="2050",
+        fill_reports=[
+            FillReport(
+                order_id="0xseed",
+                client_order_id="seed-client",
+                status="FILLED",
+                traded_size=Decimal("0.04878"),
+                avg_fill_price=Decimal("2050"),
+                raw={},
+            )
+        ],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: saved.append(state))
+
+    result = bot.run_once()
+
+    assert result is True
+    assert len(bot._exchange.placed_orders) == 3
+    assert bot._exchange.placed_orders[0]["order_type"] == "market"
+    assert bot._exchange.placed_orders[0]["side"] == "buy"
+    assert any(order["side"] == "sell" and order["price"] == Decimal("2100") for order in bot._exchange.placed_orders)
+    assert any(order["side"] == "buy" and order["price"] == Decimal("1900") for order in bot._exchange.placed_orders)
+    assert saved[-1].level(2).status == "sell_open"
+    assert saved[-1].level(1).status == "buy_open"
+    assert any("grid seed order filled" in message for message in bot._notifier.messages)

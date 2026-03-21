@@ -192,6 +192,38 @@ def test_reconcile_grid_state_rebuilds_sell_inventory_from_empty_local_state() -
     assert decision.recovered_state.level(1).exit_order_id == "0xsell"
 
 
+def test_reconcile_grid_state_rebuilds_seeded_sell_inventory_from_fill_inside_level_band() -> None:
+    now = datetime(2026, 3, 20, tzinfo=UTC)
+
+    decision = reconcile_grid_state(
+        state=GridBotState(),
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="sell",
+                price=Decimal("2100"),
+                size=Decimal("0.04878"),
+                order_id="0xseed-sell",
+                client_order_id="sell-2",
+            )
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.04878"),
+            average_entry_price=Decimal("2050"),
+        ),
+        fills=[fill(side="buy", size="0.04878", price="2050", order_id="0xseed-buy", client_order_id="seed-buy")],
+        when=now,
+    )
+
+    assert decision.action == "rebuild-from-open-orders-and-fills"
+    assert decision.recovered_state.level(2).status == "sell_open"
+    assert decision.recovered_state.level(2).entry_fill_price == Decimal("2050")
+    assert decision.recovered_state.level(2).exit_order_id == "0xseed-sell"
+
+
 def test_reconcile_grid_state_promotes_inventory_to_open_sell_order() -> None:
     now = datetime(2026, 3, 20, tzinfo=UTC)
     state = initialized_state()

@@ -120,14 +120,28 @@ def _matching_fill_by_level(
     side: str,
     level_index: int,
 ) -> AccountFill | None:
+    levels = build_grid_levels(settings)
     candidates: list[AccountFill] = []
     for fill in fills:
         if fill.side != side or fill.symbol != settings.symbol:
             continue
-        try:
-            fill_level_index = _level_for_price(settings, fill.price)
-        except ValueError:
-            continue
+        if side == "buy":
+            lower_bound = levels[level_index]
+            upper_bound = paired_sell_price(level_index, levels)
+            if upper_bound is None:
+                continue
+            if fill.price < lower_bound:
+                continue
+            if fill.price >= upper_bound and not within_tolerance(
+                fill.price, upper_bound, PRICE_TOLERANCE_RATIO
+            ):
+                continue
+            fill_level_index = level_index
+        else:
+            try:
+                fill_level_index = _level_for_price(settings, fill.price)
+            except ValueError:
+                continue
         if fill_level_index == level_index:
             candidates.append(fill)
     if not candidates:

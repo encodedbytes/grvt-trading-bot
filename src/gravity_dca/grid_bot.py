@@ -9,8 +9,8 @@ from .config import AppConfig
 from .exchange import GrvtExchange
 from .grid_recovery import GridOpenOrderSnapshot, reconcile_grid_state
 from .grid_state import GridBotState, load_grid_state, save_grid_state
-from .grid_strategy import plan_grid_orders
-from .strategy import OrderPlan, compute_amount_from_quote, new_client_order_id
+from .grid_strategy import plan_grid_orders, seed_level_index
+from .strategy import OrderPlan, compute_amount_from_quote, entry_price, new_client_order_id
 from .telegram import (
     Notifier,
     build_notifier,
@@ -170,6 +170,25 @@ class GridBot:
             reason=f"grid-{order.side}-level-{order.level_index}",
         )
 
+    def _build_seed_order_plan(self, *, instrument, snapshot, level_index: int) -> OrderPlan:
+        reference_price = entry_price(snapshot, self._settings.side)
+        amount = compute_amount_from_quote(
+            quote_amount=self._settings.quote_amount_per_level,
+            reference_price=reference_price,
+            instrument=instrument,
+            exchange=self._exchange,
+        )
+        return OrderPlan(
+            client_order_id=new_client_order_id(),
+            symbol=self._settings.symbol,
+            side=self._settings.side,
+            order_type="market",
+            amount=amount,
+            price=None,
+            reduce_only=False,
+            reason=f"grid-seed-level-{level_index}",
+        )
+
     def _submit_order(self, plan: OrderPlan) -> str | None:
         response = self._exchange.place_order(
             symbol=plan.symbol,
@@ -184,6 +203,85 @@ class GridBot:
         if isinstance(result, dict) and result.get("order_id") is not None:
             return str(result["order_id"])
         return None
+
+    def _should_seed_on_start(
+        self,
+        *,
+        recovery_action: str,
+        state: GridBotState,
+        open_orders: list[GridOpenOrderSnapshot],
+        exchange_position,
+    ) -> bool:
+        if not self._settings.seed_enabled:
+            return False
+        if recovery_action != "initialize-from-config":
+            return False
+        if open_orders or exchange_position is not None:
+            return False
+        return not any(
+            level.status in {"buy_open", "filled_inventory", "sell_open"}
+            for level in state.levels
+        )
+
+    def _apply_seed_order(
+        self,
+        *,
+        state: GridBotState,
+        instrument,
+        snapshot,
+        now: datetime,
+    ) -> bool:
+        level_index = seed_level_index(settings=self._settings, market_price=snapshot.last)
+        if level_index is None:
+            self._logger.info(
+                "Skipping grid seed order because no buyable grid level exists below market. "
+                "market_price=%s",
+                snapshot.last,
+            )
+            return False
+        plan = self._build_seed_order_plan(
+            instrument=instrument,
+            snapshot=snapshot,
+            level_index=level_index,
+        )
+        if self._config.runtime.dry_run:
+            self._logger.info("Dry run: would place %s", plan.reason)
+            return True
+        order_id = self._submit_order(plan)
+        if order_id is None:
+            raise ValueError(
+                f"GRVT did not acknowledge grid order submission for {plan.reason} "
+                f"{plan.symbol} {plan.side} amount={plan.amount}"
+            )
+        fill = self._exchange.wait_for_fill(
+            symbol=plan.symbol,
+            order_type=plan.order_type,
+            client_order_id=plan.client_order_id,
+            timeout_seconds=self._config.runtime.order_fill_timeout_seconds,
+            poll_seconds=self._config.runtime.order_fill_poll_seconds,
+        )
+        if fill is None or fill.traded_size <= 0 or fill.avg_fill_price <= 0:
+            raise ValueError(f"Grid seed order did not fill cleanly for {plan.symbol}")
+        state.mark_buy_filled(
+            level_index=level_index,
+            when=now,
+            fill_price=fill.avg_fill_price,
+            quantity=fill.traded_size,
+            order_id=fill.order_id or order_id,
+            client_order_id=fill.client_order_id or plan.client_order_id,
+        )
+        self._notify(
+            format_fill_message(
+                symbol=plan.symbol,
+                label="grid seed order filled",
+                side=plan.side,
+                quantity=fill.traded_size,
+                price=fill.avg_fill_price,
+                order_type=plan.order_type,
+                extra_lines=[f"level_index={level_index}"],
+            )
+        )
+        return True
 
     def _place_desired_orders(self, *, state: GridBotState, instrument, decision, now: datetime) -> bool:
         changed = False
@@ -304,6 +402,22 @@ class GridBot:
         if recovery.action != "keep-local" and not self._config.runtime.dry_run:
             self._persist_state(state)
 
+        changed = False
+        if self._should_seed_on_start(
+            recovery_action=recovery.action,
+            state=state,
+            open_orders=open_orders,
+            exchange_position=exchange_position,
+        ):
+            changed = self._apply_seed_order(
+                state=state,
+                instrument=instrument,
+                snapshot=snapshot,
+                now=now,
+            )
+            if changed and not self._config.runtime.dry_run:
+                self._persist_state(state)
+
         decision = plan_grid_orders(
             state=state,
             settings=self._settings,
@@ -314,7 +428,7 @@ class GridBot:
             instrument=instrument,
             decision=decision,
             now=now,
-        )
+        ) or changed
         if changed and not self._config.runtime.dry_run:
             self._persist_state(state)
         return changed

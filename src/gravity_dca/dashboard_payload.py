@@ -58,6 +58,7 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
             "quote_amount_per_level": status_payload.get("quote_amount_per_level"),
             "max_active_buy_orders": status_payload.get("max_active_buy_orders"),
             "max_inventory_levels": status_payload.get("max_inventory_levels"),
+            "seed_enabled": status_payload.get("seed_enabled"),
             "levels": status_payload.get("levels", []),
             "strategy_status": runtime_status.get("strategy_status"),
         }

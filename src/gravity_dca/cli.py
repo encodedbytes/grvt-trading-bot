@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import logging
+from decimal import Decimal
 
 from .bot import DcaBot
 from .momentum_bot import MomentumBot
@@ -49,16 +50,46 @@ def _normalize_grid_open_orders(exchange, settings) -> list[GridOpenOrderSnapsho
     instrument = exchange.get_instrument(settings.symbol)
     normalized: list[GridOpenOrderSnapshot] = []
     for payload in exchange.fetch_open_orders(symbol=settings.symbol):
-        symbol = str(payload.get("symbol") or payload.get("instrument") or "")
-        side = str(payload.get("side", "")).strip().lower()
+        legs = payload.get("legs") or []
+        leg = legs[0] if isinstance(legs, list) and legs else None
+        if isinstance(leg, dict):
+            symbol = str(
+                leg.get("instrument") or payload.get("symbol") or payload.get("instrument") or ""
+            )
+            side = "buy" if leg.get("is_buying_asset") else "sell"
+            price_value = leg.get("limit_price", payload.get("price"))
+            state = payload.get("state") or {}
+            book_size = state.get("book_size") if isinstance(state, dict) else None
+            size_value = book_size[0] if isinstance(book_size, list) and book_size else book_size
+            if size_value in (None, "", "0", 0):
+                size_value = leg.get("size", payload.get("amount", payload.get("size")))
+            client_order_id = (
+                payload.get("metadata", {}).get("client_order_id")
+                if isinstance(payload.get("metadata"), dict)
+                else None
+            )
+            reduce_only = bool(payload.get("reduce_only", False))
+        else:
+            symbol = str(payload.get("symbol") or payload.get("instrument") or "")
+            side = str(payload.get("side", "")).strip().lower()
+            price_value = payload.get("price")
+            size_value = (
+                payload.get("remaining")
+                if payload.get("remaining") not in (None, "", "0", 0)
+                else payload.get("amount", payload.get("size"))
+            )
+            client_order_id = (
+                str(payload.get("clientOrderId") or payload.get("client_order_id"))
+                if payload.get("clientOrderId") or payload.get("client_order_id")
+                else None
+            )
+            reduce_only = bool(
+                payload.get("reduceOnly")
+                if payload.get("reduceOnly") is not None
+                else payload.get("reduce_only", False)
+            )
         if symbol != settings.symbol or side not in {"buy", "sell"}:
             continue
-        price_value = payload.get("price")
-        size_value = (
-            payload.get("remaining")
-            if payload.get("remaining") not in (None, "", "0", 0)
-            else payload.get("amount", payload.get("size"))
-        )
         if price_value in (None, "", "0", 0) or size_value in (None, "", "0", 0):
             continue
         normalized.append(
@@ -68,16 +99,8 @@ def _normalize_grid_open_orders(exchange, settings) -> list[GridOpenOrderSnapsho
                 price=exchange.round_price(Decimal(str(price_value)), instrument.tick_size),
                 size=Decimal(str(size_value)),
                 order_id=str(payload["id"]) if payload.get("id") else None,
-                client_order_id=(
-                    str(payload.get("clientOrderId") or payload.get("client_order_id"))
-                    if payload.get("clientOrderId") or payload.get("client_order_id")
-                    else None
-                ),
-                reduce_only=bool(
-                    payload.get("reduceOnly")
-                    if payload.get("reduceOnly") is not None
-                    else payload.get("reduce_only", False)
-                ),
+                client_order_id=str(client_order_id) if client_order_id else None,
+                reduce_only=reduce_only,
             )
         )
     return normalized
@@ -310,6 +333,7 @@ def main() -> None:
             print(f"price_band_high={config.grid.price_band_high}")
             print(f"grid_levels={config.grid.grid_levels}")
             print(f"spacing_mode={config.grid.spacing_mode}")
+            print(f"seed_enabled={'true' if config.grid.seed_enabled else 'false'}")
             print(f"max_active_buy_orders={config.grid.max_active_buy_orders}")
             print(f"max_inventory_levels={config.grid.max_inventory_levels}")
             return
@@ -413,6 +437,7 @@ def main() -> None:
             print(f"price_band_high={config.grid.price_band_high}")
             print(f"grid_levels={config.grid.grid_levels}")
             print(f"spacing_mode={config.grid.spacing_mode}")
+            print(f"seed_enabled={'true' if config.grid.seed_enabled else 'false'}")
             print(
                 "active_buy_levels="
                 + ",".join(str(level.level_index) for level in state.levels if level.status == "buy_open")

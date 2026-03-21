@@ -728,6 +728,7 @@ HTML_PAGE = """<!doctype html>
             + '<dt>Band high</dt><dd>' + esc(bot.price_band_high) + '</dd>'
             + '<dt>Grid levels</dt><dd>' + esc(bot.grid_levels) + '</dd>'
             + '<dt>Spacing</dt><dd>' + esc(bot.spacing_mode) + '</dd>'
+            + '<dt>Seed on start</dt><dd>' + (bot.seed_enabled ? 'true' : 'false') + '</dd>'
             + '<dt>Open buys</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_buy_orders : 0) + '</dd>'
             + '<dt>Inventory</dt><dd>' + esc(bot.active_trade ? bot.active_trade.active_inventory_levels : 0) + '</dd>'
             + '<dt>Round trips</dt><dd>' + esc(bot.completed_round_trips || bot.completed_cycles) + '</dd>'
@@ -843,7 +844,8 @@ HTML_PAGE = """<!doctype html>
                 field("Spacing", bot.spacing_mode),
                 field("Quote / level", bot.quote_amount_per_level || bot.initial_quote_amount),
                 field("Max open buys", bot.max_active_buy_orders),
-                field("Max inventory", bot.max_inventory_levels)
+                field("Max inventory", bot.max_inventory_levels),
+                field("Seed on start", bot.seed_enabled ? "true" : "false")
               ]
             : [
                 field("Initial quote", bot.initial_quote_amount),
