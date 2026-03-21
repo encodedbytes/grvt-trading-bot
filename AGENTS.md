@@ -21,6 +21,7 @@ Before making changes or running the bot again, check:
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md) if resuming Telegram notification work
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md) if resuming momentum strategy work
 - [TASKS_DASHBOARD.md](TASKS_DASHBOARD.md) if resuming dashboard architecture work
+- [TASKS_GRID.md](TASKS_GRID.md) if resuming grid bot planning or implementation
 - whether current work should happen on a feature branch instead of `main`
 
 ## Current Operational Facts

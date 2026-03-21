@@ -60,6 +60,23 @@ class MomentumSettings:
 
 
 @dataclass(frozen=True)
+class GridSettings:
+    symbol: str
+    side: str
+    order_type: str
+    price_band_low: Decimal
+    price_band_high: Decimal
+    grid_levels: int
+    spacing_mode: str
+    quote_amount_per_level: Decimal
+    max_active_buy_orders: int
+    max_inventory_levels: int
+    initial_leverage: Decimal | None = None
+    margin_type: str | None = None
+    state_file: Path = Path(".gravity-grid-state.json")
+
+
+@dataclass(frozen=True)
 class RuntimeSettings:
     dry_run: bool = True
     poll_seconds: int = 30
@@ -90,6 +107,7 @@ class AppConfig:
     telegram: TelegramSettings
     strategy_type: str = "dca"
     momentum: MomentumSettings | None = None
+    grid: GridSettings | None = None
 
 
 def _optional_decimal(value: object) -> Decimal | None:
@@ -157,6 +175,7 @@ def _build_app_config(
     strategy = raw.get("strategy", {})
     dca = raw.get("dca") or strategy.get("dca")
     momentum = raw.get("momentum") or strategy.get("momentum")
+    grid = raw.get("grid") or strategy.get("grid")
     runtime = raw.get("runtime", {})
     telegram = raw.get("telegram", {})
     explicit_strategy_type = (
@@ -164,22 +183,31 @@ def _build_app_config(
     )
     has_dca = dca is not None
     has_momentum = momentum is not None
+    has_grid = grid is not None
 
-    if not has_dca and not has_momentum:
-        raise ValueError("config must define either a [dca] or [momentum] section")
-    if has_dca and has_momentum:
-        raise ValueError("config cannot define both [dca] and [momentum] sections")
+    defined_strategy_sections = int(has_dca) + int(has_momentum) + int(has_grid)
+    if defined_strategy_sections == 0:
+        raise ValueError("config must define either a [dca], [momentum], or [grid] section")
+    if defined_strategy_sections > 1:
+        raise ValueError("config cannot define more than one strategy section")
 
     if explicit_strategy_type:
-        if explicit_strategy_type not in {"dca", "momentum"}:
+        if explicit_strategy_type not in {"dca", "momentum", "grid"}:
             raise ValueError(f"unsupported strategy.type: {explicit_strategy_type}")
         if explicit_strategy_type == "dca" and not has_dca:
             raise ValueError("strategy.type = 'dca' requires a [dca] section")
         if explicit_strategy_type == "momentum" and not has_momentum:
             raise ValueError("strategy.type = 'momentum' requires a [momentum] section")
+        if explicit_strategy_type == "grid" and not has_grid:
+            raise ValueError("strategy.type = 'grid' requires a [grid] section")
         strategy_type = explicit_strategy_type
     else:
-        strategy_type = "momentum" if has_momentum else "dca"
+        if has_momentum:
+            strategy_type = "momentum"
+        elif has_grid:
+            strategy_type = "grid"
+        else:
+            strategy_type = "dca"
 
     dca_settings = None
     if dca is not None:
@@ -255,6 +283,59 @@ def _build_app_config(
             state_file=momentum_state_file,
         )
 
+    grid_settings = None
+    if grid is not None:
+        grid_side = str(grid.get("side", "buy")).lower()
+        if grid_side != "buy":
+            raise ValueError("grid side must be 'buy'")
+        grid_order_type = str(grid.get("order_type", "limit")).strip().lower()
+        if grid_order_type != "limit":
+            raise ValueError("grid order_type must be 'limit'")
+        spacing_mode = str(grid.get("spacing_mode", "arithmetic")).strip().lower()
+        if spacing_mode != "arithmetic":
+            raise ValueError("grid spacing_mode must be 'arithmetic' in v1")
+        grid_levels = int(grid["grid_levels"])
+        if grid_levels < 2:
+            raise ValueError("grid_levels must be at least 2")
+        max_active_buy_orders = int(grid["max_active_buy_orders"])
+        if max_active_buy_orders < 1:
+            raise ValueError("max_active_buy_orders must be at least 1")
+        max_inventory_levels = int(grid["max_inventory_levels"])
+        if max_inventory_levels < 1:
+            raise ValueError("max_inventory_levels must be at least 1")
+        if max_active_buy_orders > grid_levels:
+            raise ValueError("max_active_buy_orders cannot exceed grid_levels")
+        if max_inventory_levels > grid_levels:
+            raise ValueError("max_inventory_levels cannot exceed grid_levels")
+        price_band_low = Decimal(str(grid["price_band_low"]))
+        price_band_high = Decimal(str(grid["price_band_high"]))
+        if price_band_low >= price_band_high:
+            raise ValueError("price_band_low must be less than price_band_high")
+        grid_state_file = (
+            _resolve_state_file(grid.get("state_file", ".gravity-grid-state.json"), config_path)
+            if resolve_state_paths
+            else Path(str(grid.get("state_file", ".gravity-grid-state.json")))
+        )
+        grid_settings = GridSettings(
+            symbol=str(grid["symbol"]),
+            side=grid_side,
+            order_type=grid_order_type,
+            price_band_low=price_band_low,
+            price_band_high=price_band_high,
+            grid_levels=grid_levels,
+            spacing_mode=spacing_mode,
+            quote_amount_per_level=Decimal(str(grid["quote_amount_per_level"])),
+            max_active_buy_orders=max_active_buy_orders,
+            max_inventory_levels=max_inventory_levels,
+            initial_leverage=_optional_decimal(grid.get("initial_leverage")),
+            margin_type=(
+                str(grid["margin_type"]).strip()
+                if grid.get("margin_type") is not None
+                else None
+            ),
+            state_file=grid_state_file,
+        )
+
     return AppConfig(
         credentials=GrvtCredentials(
             api_key=str(credentials["api_key"]),
@@ -298,6 +379,7 @@ def _build_app_config(
         ),
         strategy_type=strategy_type,
         momentum=momentum_settings,
+        grid=grid_settings,
     )
 
 

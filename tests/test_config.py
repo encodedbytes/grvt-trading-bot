@@ -370,6 +370,90 @@ dry_run = true
     assert config.momentum.state_file == Path(".gravity-momentum-state.json")
 
 
+def test_load_config_reads_grid_settings(tmp_path) -> None:
+    config_path = tmp_path / "config.grid.toml"
+    config_path.write_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+order_type = "limit"
+initial_leverage = "3"
+margin_type = "cross"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 8
+spacing_mode = "arithmetic"
+quote_amount_per_level = "100"
+max_active_buy_orders = 3
+max_inventory_levels = 4
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = true
+"""
+    )
+
+    config = load_config(config_path)
+
+    assert config.strategy_type == "grid"
+    assert config.dca is None
+    assert config.momentum is None
+    assert config.grid is not None
+    assert config.grid.symbol == "ETH_USDT_Perp"
+    assert config.grid.side == "buy"
+    assert config.grid.order_type == "limit"
+    assert config.grid.initial_leverage == Decimal("3")
+    assert config.grid.margin_type == "cross"
+    assert config.grid.price_band_low == Decimal("1800")
+    assert config.grid.price_band_high == Decimal("2200")
+    assert config.grid.grid_levels == 8
+    assert config.grid.spacing_mode == "arithmetic"
+    assert config.grid.quote_amount_per_level == Decimal("100")
+    assert config.grid.max_active_buy_orders == 3
+    assert config.grid.max_inventory_levels == 4
+    assert config.grid.state_file == tmp_path / "state" / ".gravity-grid-eth.json"
+
+
+def test_load_config_reads_selector_style_grid_settings() -> None:
+    config = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[strategy.grid]
+symbol = "BTC_USDT_Perp"
+price_band_low = "80000"
+price_band_high = "95000"
+grid_levels = 6
+quote_amount_per_level = "50"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+""",
+        resolve_state_paths=False,
+    )
+
+    assert config.strategy_type == "grid"
+    assert config.grid is not None
+    assert config.grid.symbol == "BTC_USDT_Perp"
+    assert config.grid.side == "buy"
+    assert config.grid.order_type == "limit"
+    assert config.grid.spacing_mode == "arithmetic"
+    assert config.grid.state_file == Path(".gravity-grid-state.json")
+
+
 def test_load_config_reports_friendly_error_for_null_values() -> None:
     with pytest.raises(
         ValueError,
@@ -416,7 +500,7 @@ api_key = "key"
 private_key = "pk"
 trading_account_id = "123"
 """,
-            "config must define either a [dca] or [momentum] section",
+            "config must define either a [dca], [momentum], or [grid] section",
         ),
         (
             """
@@ -449,7 +533,7 @@ min_atr_percent = "0.4"
 stop_atr_multiple = "1.5"
 trailing_atr_multiple = "2.0"
 """,
-            "config cannot define both [dca] and [momentum] sections",
+            "config cannot define more than one strategy section",
         ),
         (
             """
@@ -498,8 +582,128 @@ trailing_atr_multiple = "2.0"
 """,
             "momentum side must be 'buy'",
         ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+""",
+            "strategy.type = 'grid' requires a [grid] section",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+side = "sell"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 8
+quote_amount_per_level = "100"
+max_active_buy_orders = 3
+max_inventory_levels = 4
+""",
+            "grid side must be 'buy'",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+order_type = "market"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 8
+quote_amount_per_level = "100"
+max_active_buy_orders = 3
+max_inventory_levels = 4
+""",
+            "grid order_type must be 'limit'",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "2200"
+price_band_high = "1800"
+grid_levels = 8
+quote_amount_per_level = "100"
+max_active_buy_orders = 3
+max_inventory_levels = 4
+""",
+            "price_band_low must be less than price_band_high",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 1
+quote_amount_per_level = "100"
+max_active_buy_orders = 1
+max_inventory_levels = 1
+""",
+            "grid_levels must be at least 2",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 6
+spacing_mode = "geometric"
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+""",
+            "grid spacing_mode must be 'arithmetic' in v1",
+        ),
     ],
 )
-def test_load_config_rejects_invalid_momentum_shapes(raw_text, message) -> None:
+def test_load_config_rejects_invalid_strategy_shapes(raw_text, message) -> None:
     with pytest.raises(ValueError, match=re.escape(message)):
         load_config_text(raw_text, resolve_state_paths=False)

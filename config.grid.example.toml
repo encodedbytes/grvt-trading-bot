@@ -1,0 +1,35 @@
+[credentials]
+environment = "prod"
+api_key = "your-api-key"
+private_key = "your-private-key"
+trading_account_id = "your-trading-account-id"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+order_type = "limit"
+initial_leverage = "3"
+margin_type = "CROSS"
+
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 8
+spacing_mode = "arithmetic"
+quote_amount_per_level = "100"
+max_active_buy_orders = 3
+max_inventory_levels = 4
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = true
+poll_seconds = 30
+bot_api_port = 8789
+private_auth_retry_attempts = 3
+private_auth_retry_backoff_seconds = 2
+log_level = "INFO"
+
+[telegram]
+enabled = false
