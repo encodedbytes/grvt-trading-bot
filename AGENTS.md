@@ -43,6 +43,7 @@ Before making changes or running the bot again, check:
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
 - The dashboard drawer now exposes whether details are coming from `bot-api`, `docker-fallback`, or `error`, and momentum signal diagnostics explicitly note when fallback mode cannot provide live signals.
+- Dashboard degraded-mode banners now include an operator action hint, and the grid card labels use strategy-specific `Grid Runtime` wording in both card layouts.
 - The grid bot now has separate config, state, strategy, reconciliation, runtime, CLI, bot API, and dashboard support on the `grid-bot-implementation` branch.
 - Grid v1 is intentionally constrained to `side = "buy"`, `order_type = "limit"`, and `spacing_mode = "arithmetic"`.
 - Grid configs can optionally set `seed_enabled = true` to place one startup market buy on fresh grid initialization, then continue with the normal paired-sell lifecycle from that seeded inventory.

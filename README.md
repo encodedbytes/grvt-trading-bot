@@ -302,6 +302,7 @@ make dashboard-docker-build
 ```
 
 Dashboard detail views use the bot-local API when possible and fall back to Docker-based inspection when necessary. In fallback mode, the drawer now tells you that live momentum `Signals` data is unavailable because the bot API could not be reached.
+The dashboard refresh timestamp is announced politely for assistive tech, view-toggle buttons now provide hover feedback, grid cards use strategy-specific `Grid Runtime` labels, and degraded-mode banners include the next operator step instead of only the raw failure.
 
 For Docker, mount a writable `state/` directory and point `state_file` to `/state/...`, for example:
 

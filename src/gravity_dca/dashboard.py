@@ -216,7 +216,10 @@ def collect_dashboard_payload() -> dict[str, Any]:
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         LOGGER.warning("Dashboard could not inspect Docker: %s", exc)
         bots = []
-        error = f"Docker inspection unavailable: {exc}"
+        error = (
+            f"Docker inspection unavailable: {exc}. "
+            "Check that Docker is running and that this dashboard process can reach the Docker socket or CLI."
+        )
     LOGGER.info(
         "Dashboard payload generated bots=%s active=%s inactive_max=%s error=%s",
         len(bots),
