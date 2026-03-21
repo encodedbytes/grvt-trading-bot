@@ -261,6 +261,8 @@ Delivered:
 
 ### Phase 3: Pure Grid Strategy Layer
 
+Status: implemented
+
 Goal:
 - compute levels and desired order/inventory actions without exchange I/O
 
@@ -272,6 +274,13 @@ Tasks:
 
 Completion criteria:
 - unit tests cover level generation and decision-making
+
+Delivered:
+- added pure grid planning helpers in `gravity_dca.grid_strategy`
+- implemented inclusive arithmetic grid-level generation
+- implemented paired sell-target derivation from a filled buy level
+- implemented a deterministic planner that turns market price plus local grid state into desired buy/sell orders
+- added unit tests for level generation, buy-order selection, sell pairing, and capacity limits
 
 ### Phase 4: Exchange/Order Reconciliation
 
