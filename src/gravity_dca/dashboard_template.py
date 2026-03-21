@@ -128,6 +128,10 @@ HTML_PAGE = """<!doctype html>
       cursor: pointer;
       transition: background-color .18s ease, color .18s ease;
     }
+    .view-toggle button:hover {
+      background: rgba(42, 161, 152, 0.12);
+      color: #d8fff9;
+    }
     .view-toggle button[aria-pressed="true"] {
       background: var(--accent-soft);
       color: #d8fff9;
@@ -487,7 +491,7 @@ HTML_PAGE = """<!doctype html>
         <div class="sub">Read-only local monitor for running GRVT bot containers. It reads Docker metadata, mounted config files, and state snapshots without talking to the exchange.</div>
       </div>
       <div class="meta">
-        <div id="updated">Loading page…</div>
+        <div id="updated" aria-live="polite">Loading page…</div>
         <div>Refreshes every 10 seconds</div>
       </div>
     </section>
@@ -634,6 +638,11 @@ HTML_PAGE = """<!doctype html>
     }
     function renderHorizontalBot(bot, statusBadges) {
       var primaryStats;
+      var runtimeTitle = bot.active_trade
+        ? (bot.active_trade_kind === "position"
+          ? "Live Position"
+          : (bot.strategy_type === "grid" ? "Grid Runtime" : "Live Cycle"))
+        : (bot.strategy_type === "grid" ? "Grid Runtime" : "Runtime");
       if (bot.strategy_type === "momentum") {
         primaryStats = bot.active_trade
           ? '<dl>'
@@ -684,7 +693,7 @@ HTML_PAGE = """<!doctype html>
         + '</div><div class="badges">' + statusBadges + '</div></div>'
         + '<div class="card-layout">'
         + '<div class="card-primary">'
-        + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>' + (bot.active_trade ? (bot.active_trade_kind === "position" ? 'Live Position' : 'Live Cycle') : 'Runtime') + '</h2>' + primaryStats + '</div>'
+        + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>' + runtimeTitle + '</h2>' + primaryStats + '</div>'
         + '</div>'
         + '<div class="card-secondary">'
         + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>Ops</h2>' + secondaryStats + '</div>'
@@ -1000,7 +1009,7 @@ HTML_PAGE = """<!doctype html>
           }
         })
         .catch(function(error) {
-          showBanner("Drawer refresh failed: " + error);
+          showBanner("Drawer refresh failed: " + error + ". Retry in a few seconds, or restart the dashboard if the detail view stays unavailable.");
         });
     }
     function refresh() {
@@ -1025,8 +1034,8 @@ HTML_PAGE = """<!doctype html>
         })
         .catch(function(error) {
           clientLog("refresh-fail:" + error);
-          showBanner("Dashboard refresh failed: " + error);
-          document.getElementById('cards').innerHTML = '<section class="card empty">Dashboard refresh failed.</section>';
+          showBanner("Dashboard refresh failed: " + error + ". Retry shortly, then check Docker access or restart the dashboard if it continues.");
+          document.getElementById('cards').innerHTML = '<section class="card empty">Dashboard refresh failed. Retry shortly, then check Docker access or restart the dashboard.</section>';
         });
     }
     window.onerror = function(message, source, lineno, colno) {

@@ -321,6 +321,7 @@ def test_collect_dashboard_payload_reports_docker_error(monkeypatch) -> None:
     payload = dashboard.collect_dashboard_payload()
     assert payload["summary"]["total_containers"] == 0
     assert payload["error"] is not None
+    assert "Check that Docker is running" in payload["error"]
 
 
 def test_docker_bin_uses_env_override(monkeypatch) -> None:
@@ -760,6 +761,7 @@ def test_dashboard_html_has_view_toggle() -> None:
     assert 'id="view-vertical"' in dashboard.HTML_PAGE
     assert 'id="view-horizontal"' in dashboard.HTML_PAGE
     assert 'data-view="horizontal"' in dashboard.HTML_PAGE
+    assert '.view-toggle button:hover {' in dashboard.HTML_PAGE
     assert 'function applyViewMode(view)' in dashboard.HTML_PAGE
     assert 'gravity-dashboard-view' in dashboard.HTML_PAGE
     assert 'var latestBots = [];' in dashboard.HTML_PAGE
@@ -801,6 +803,15 @@ def test_dashboard_html_surfaces_grid_runtime_details() -> None:
     assert "field(\"Band low\", bot.price_band_low)" in dashboard.HTML_PAGE
     assert "field(\"Grid levels\", bot.grid_levels)" in dashboard.HTML_PAGE
     assert "renderDrawerSection(\"Grid levels\"" in dashboard.HTML_PAGE
+    assert 'bot.strategy_type === "grid" ? "Grid Runtime" : "Runtime"' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_uses_actionable_refresh_messages() -> None:
+    assert 'Drawer refresh failed: ' in dashboard.HTML_PAGE
+    assert 'Retry in a few seconds, or restart the dashboard if the detail view stays unavailable.' in dashboard.HTML_PAGE
+    assert 'Dashboard refresh failed: ' in dashboard.HTML_PAGE
+    assert 'Retry shortly, then check Docker access or restart the dashboard if it continues.' in dashboard.HTML_PAGE
+    assert 'Dashboard refresh failed. Retry shortly, then check Docker access or restart the dashboard.' in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_formats_timestamps_with_intl() -> None:

@@ -160,6 +160,9 @@ Operator-facing behavior also improved:
 - drawers explicitly show whether details came from the bot API or Docker fallback
 - momentum signal diagnostics now explain when they are unavailable in fallback mode
 - the payload contract uses generic trade fields instead of leaking DCA-only naming into momentum views
+- the refresh timestamp is announced as a polite live region for assistive tech
+- degraded-mode errors now tell the operator what to try next instead of only echoing the raw failure
+- grid cards now use `Grid Runtime` wording instead of the leftover generic `Live Cycle` label
 
 ## Notes For Future Sessions
 
