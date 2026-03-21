@@ -110,3 +110,40 @@ def test_build_container_summary_attaches_runtime_fields() -> None:
     assert summary["signal_status"] == "unavailable"
     assert summary["risk_reduce_only"] is True
     assert summary["recent_error"] == "ValueError: boom"
+
+
+def test_normalize_status_payload_maps_grid_fields() -> None:
+    normalized = normalize_status_payload(
+        {
+            "strategy_type": "grid",
+            "state_file": "/state/grid.json",
+            "symbol": "ETH_USDT_Perp",
+            "environment": "prod",
+            "order_type": "limit",
+            "dry_run": False,
+            "initial_leverage": "3",
+            "margin_type": "CROSS",
+            "poll_seconds": 30,
+            "bot_api_port": 8789,
+            "price_band_low": "1800",
+            "price_band_high": "2200",
+            "grid_levels": 5,
+            "spacing_mode": "arithmetic",
+            "quote_amount_per_level": "100",
+            "max_active_buy_orders": 2,
+            "max_inventory_levels": 2,
+            "telegram_enabled": True,
+            "completed_cycles": 1,
+            "completed_round_trips": 1,
+            "max_cycles": None,
+            "active_grid": {"active_buy_orders": 1, "active_inventory_levels": 1},
+            "levels": [{"level_index": 1, "price": "1900", "status": "buy_open"}],
+            "runtime_status": {"strategy_status": None},
+        }
+    )
+
+    assert normalized["strategy_type"] == "grid"
+    assert normalized["active_trade_kind"] == "grid"
+    assert normalized["active_trade"]["active_buy_orders"] == 1
+    assert normalized["price_band_low"] == "1800"
+    assert normalized["levels"][0]["status"] == "buy_open"

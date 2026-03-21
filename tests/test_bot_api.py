@@ -86,3 +86,40 @@ def test_shared_status_clears_strategy_status_on_failure() -> None:
     snapshot = shared.snapshot()
 
     assert snapshot["runtime_status"]["strategy_status"] is None
+
+
+def test_shared_status_supports_grid_snapshots() -> None:
+    config = load_config_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/grid.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        config_path=Path("/app/config.toml"),
+        resolve_state_paths=False,
+    )
+    shared = build_shared_status(config, logging.getLogger("gravity_dca"))
+
+    snapshot = shared.snapshot()
+
+    assert snapshot["strategy_type"] == "grid"
+    assert snapshot["symbol"] == "ETH_USDT_Perp"

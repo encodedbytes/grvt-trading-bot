@@ -6,6 +6,10 @@ import logging
 
 from .bot import DcaBot
 from .momentum_bot import MomentumBot
+from .grid_bot import GridBot
+from .grid_recovery import GridOpenOrderSnapshot, reconcile_grid_state
+from .grid_state import load_grid_state
+from .grid_strategy import build_grid_levels
 from .momentum_recovery import reconcile_momentum_state
 from .momentum_state import load_momentum_state
 from .momentum_strategy import build_indicator_snapshot, evaluate_entry, fixed_take_profit_price
@@ -39,6 +43,44 @@ def momentum_candle_limit(settings) -> int:
         settings.ema_slow_period + settings.breakout_lookback + 5,
         (settings.adx_period * 2) + 5,
     )
+
+
+def _normalize_grid_open_orders(exchange, settings) -> list[GridOpenOrderSnapshot]:
+    instrument = exchange.get_instrument(settings.symbol)
+    normalized: list[GridOpenOrderSnapshot] = []
+    for payload in exchange.fetch_open_orders(symbol=settings.symbol):
+        symbol = str(payload.get("symbol") or payload.get("instrument") or "")
+        side = str(payload.get("side", "")).strip().lower()
+        if symbol != settings.symbol or side not in {"buy", "sell"}:
+            continue
+        price_value = payload.get("price")
+        size_value = (
+            payload.get("remaining")
+            if payload.get("remaining") not in (None, "", "0", 0)
+            else payload.get("amount", payload.get("size"))
+        )
+        if price_value in (None, "", "0", 0) or size_value in (None, "", "0", 0):
+            continue
+        normalized.append(
+            GridOpenOrderSnapshot(
+                symbol=symbol,
+                side=side,
+                price=exchange.round_price(Decimal(str(price_value)), instrument.tick_size),
+                size=Decimal(str(size_value)),
+                order_id=str(payload["id"]) if payload.get("id") else None,
+                client_order_id=(
+                    str(payload.get("clientOrderId") or payload.get("client_order_id"))
+                    if payload.get("clientOrderId") or payload.get("client_order_id")
+                    else None
+                ),
+                reduce_only=bool(
+                    payload.get("reduceOnly")
+                    if payload.get("reduceOnly") is not None
+                    else payload.get("reduce_only", False)
+                ),
+            )
+        )
+    return normalized
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -223,6 +265,54 @@ def main() -> None:
                     f"last_realized_pnl_estimate={state.last_closed_position.realized_pnl_estimate}"
                 )
             return
+        if configured_strategy_type(config) == "grid":
+            exchange = build_exchange(config, logging.getLogger("gravity_dca"))
+            state = load_grid_state(config.grid.state_file)
+            print(f"state_file={config.grid.state_file}")
+            print(f"symbol={config.grid.symbol}")
+            print(f"configured_side={config.grid.side}")
+            print(f"order_type={config.grid.order_type}")
+            print(f"dry_run={'true' if config.runtime.dry_run else 'false'}")
+            details = exchange.get_initial_position_details(config.grid.symbol)
+            print(f"initial_leverage={details.leverage if details.leverage is not None else ''}")
+            print(f"min_leverage={details.min_leverage if details.min_leverage is not None else ''}")
+            print(f"max_leverage={details.max_leverage if details.max_leverage is not None else ''}")
+            print(f"margin_type={details.margin_type if details.margin_type is not None else ''}")
+            try:
+                open_orders = _normalize_grid_open_orders(exchange, config.grid)
+                exchange_position = exchange.get_open_position(config.grid.symbol)
+                fills = exchange.get_recent_fills(config.grid.symbol) if exchange_position is not None or open_orders else []
+                decision = reconcile_grid_state(
+                    state=state,
+                    settings=config.grid,
+                    open_orders=open_orders,
+                    exchange_position=exchange_position,
+                    fills=fills,
+                    when=datetime.now(tz=UTC),
+                )
+                print(f"recovery_decision={decision.action}")
+                print(f"recovery_message={decision.message}")
+                state = decision.recovered_state
+            except TransientExchangeError as exc:
+                print("recovery_decision=recovery-unavailable")
+                print(f"recovery_message={exc}")
+                open_orders = []
+                exchange_position = None
+            active_buy_orders = sum(1 for level in state.levels if level.status == "buy_open")
+            active_inventory_levels = sum(
+                1 for level in state.levels if level.status in {"filled_inventory", "sell_open"}
+            )
+            print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
+            print(f"open_buy_orders={active_buy_orders}")
+            print(f"inventory_levels={active_inventory_levels}")
+            print(f"completed_round_trips={state.completed_round_trips}")
+            print(f"price_band_low={config.grid.price_band_low}")
+            print(f"price_band_high={config.grid.price_band_high}")
+            print(f"grid_levels={config.grid.grid_levels}")
+            print(f"spacing_mode={config.grid.spacing_mode}")
+            print(f"max_active_buy_orders={config.grid.max_active_buy_orders}")
+            print(f"max_inventory_levels={config.grid.max_inventory_levels}")
+            return
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         print(f"state_file={config.dca.state_file}")
@@ -314,6 +404,28 @@ def main() -> None:
                 f"{fixed_take_profit_price(position, config.momentum) if fixed_take_profit_price(position, config.momentum) is not None else ''}"
             )
             return
+        if configured_strategy_type(config) == "grid":
+            state = load_grid_state(config.grid.state_file)
+            print(f"state_file={config.grid.state_file}")
+            print(f"symbol={config.grid.symbol}")
+            print(f"side={config.grid.side}")
+            print(f"price_band_low={config.grid.price_band_low}")
+            print(f"price_band_high={config.grid.price_band_high}")
+            print(f"grid_levels={config.grid.grid_levels}")
+            print(f"spacing_mode={config.grid.spacing_mode}")
+            print(
+                "active_buy_levels="
+                + ",".join(str(level.level_index) for level in state.levels if level.status == "buy_open")
+            )
+            print(
+                "inventory_levels="
+                + ",".join(
+                    str(level.level_index)
+                    for level in state.levels
+                    if level.status in {"filled_inventory", "sell_open"}
+                )
+            )
+            return
         state = load_state(config.dca.state_file)
         if state.active_cycle is None:
             print("active_cycle=false")
@@ -388,6 +500,46 @@ def main() -> None:
                     f"{decision.recovered_position.highest_price_since_entry}"
                 )
             return
+        if configured_strategy_type(config) == "grid":
+            exchange = build_exchange(config, logging.getLogger("gravity_dca"))
+            state = load_grid_state(config.grid.state_file)
+            try:
+                open_orders = _normalize_grid_open_orders(exchange, config.grid)
+                exchange_position = exchange.get_open_position(config.grid.symbol)
+                fills = exchange.get_recent_fills(config.grid.symbol) if exchange_position is not None or open_orders else []
+            except TransientExchangeError as exc:
+                print(f"state_file={config.grid.state_file}")
+                print(f"symbol={config.grid.symbol}")
+                print(f"local_grid_initialized={'true' if state.grid is not None else 'false'}")
+                print("exchange_position=unknown")
+                print("decision=recovery-unavailable")
+                print(f"message={exc}")
+                return
+            decision = reconcile_grid_state(
+                state=state,
+                settings=config.grid,
+                open_orders=open_orders,
+                exchange_position=exchange_position,
+                fills=fills,
+                when=datetime.now(tz=UTC),
+            )
+            recovered = decision.recovered_state
+            print(f"state_file={config.grid.state_file}")
+            print(f"symbol={config.grid.symbol}")
+            print(f"local_grid_initialized={'true' if state.grid is not None else 'false'}")
+            print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
+            print(f"open_orders={len(open_orders)}")
+            print(f"decision={decision.action}")
+            print(f"message={decision.message}")
+            print(
+                "recovered_active_buy_orders="
+                f"{sum(1 for level in recovered.levels if level.status == 'buy_open')}"
+            )
+            print(
+                "recovered_inventory_levels="
+                f"{sum(1 for level in recovered.levels if level.status in {'filled_inventory', 'sell_open'})}"
+            )
+            return
         exchange = build_exchange(config, logging.getLogger("gravity_dca"))
         state = load_state(config.dca.state_file)
         try:
@@ -438,6 +590,8 @@ def main() -> None:
 
     if configured_strategy_type(config) == "momentum":
         bot = MomentumBot(config, logging.getLogger("gravity_dca"))
+    elif configured_strategy_type(config) == "grid":
+        bot = GridBot(config, logging.getLogger("gravity_dca"))
     else:
         bot = DcaBot(config, logging.getLogger("gravity_dca"))
     if args.once:

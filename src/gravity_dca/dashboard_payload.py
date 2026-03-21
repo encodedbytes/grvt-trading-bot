@@ -19,6 +19,48 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
     thresholds = dict(empty_thresholds())
     thresholds.update(status_payload.get("thresholds", {}))
     runtime_status = status_payload.get("runtime_status", {})
+    if strategy_type == "grid":
+        active_trade = status_payload.get("active_grid")
+        return {
+            "strategy_type": "grid",
+            "state_file": status_payload["state_file"],
+            "symbol": status_payload["symbol"],
+            "environment": status_payload["environment"],
+            "order_type": status_payload["order_type"],
+            "dry_run": status_payload["dry_run"],
+            "initial_leverage": status_payload["initial_leverage"],
+            "margin_type": status_payload["margin_type"],
+            "poll_seconds": status_payload["poll_seconds"],
+            "bot_api_port": status_payload["bot_api_port"],
+            "initial_quote_amount": status_payload.get("quote_amount_per_level"),
+            "safety_order_quote_amount": None,
+            "max_safety_orders": None,
+            "price_deviation_percent": None,
+            "take_profit_percent": None,
+            "stop_loss_percent": None,
+            "safety_order_step_scale": None,
+            "safety_order_volume_scale": None,
+            "telegram_enabled": status_payload["telegram_enabled"],
+            "completed_cycles": status_payload["completed_cycles"],
+            "completed_round_trips": status_payload.get("completed_round_trips"),
+            "max_cycles": status_payload["max_cycles"],
+            "active_trade_kind": "grid",
+            "last_closed_trade_kind": None,
+            "active_trade": active_trade,
+            "active_cycle": active_trade,
+            "thresholds": thresholds,
+            "last_closed_trade": None,
+            "last_closed_cycle": None,
+            "price_band_low": status_payload.get("price_band_low"),
+            "price_band_high": status_payload.get("price_band_high"),
+            "grid_levels": status_payload.get("grid_levels"),
+            "spacing_mode": status_payload.get("spacing_mode"),
+            "quote_amount_per_level": status_payload.get("quote_amount_per_level"),
+            "max_active_buy_orders": status_payload.get("max_active_buy_orders"),
+            "max_inventory_levels": status_payload.get("max_inventory_levels"),
+            "levels": status_payload.get("levels", []),
+            "strategy_status": runtime_status.get("strategy_status"),
+        }
     if strategy_type == "momentum":
         active_trade = status_payload.get("active_position")
         last_closed_trade = status_payload.get("last_closed_position")

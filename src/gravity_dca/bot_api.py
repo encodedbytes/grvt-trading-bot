@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import AppConfig
+from .grid_state import GridBotState, load_grid_state
 from .momentum_state import load_momentum_state
 from .state import BotState, load_state
 from .status_snapshot import (
@@ -49,6 +50,10 @@ class SharedBotStatus:
             if self.config.momentum is None:
                 raise ValueError("Momentum config is required for momentum bot API snapshots")
             state = load_momentum_state(self.config.momentum.state_file)
+        elif self.config.strategy_type == "grid":
+            if self.config.grid is None:
+                raise ValueError("Grid config is required for grid bot API snapshots")
+            state = load_grid_state(self.config.grid.state_file)
         else:
             if self.config.dca is None:
                 raise ValueError("DCA config is required for DCA bot API snapshots")

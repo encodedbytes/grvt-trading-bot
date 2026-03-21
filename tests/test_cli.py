@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from gravity_dca import cli
 from gravity_dca.config import load_config_text
+from gravity_dca.grid_state import GridBotState
 from gravity_dca.momentum_state import MomentumBotState
 from gravity_dca.state import ActiveCycleState, BotState
 
@@ -31,10 +32,23 @@ class DummyExchange:
             },
         )()
 
+    def get_instrument(self, symbol: str):
+        return type(
+            "Instrument",
+            (),
+            {
+                "symbol": symbol,
+                "tick_size": Decimal("0.01"),
+            },
+        )()
+
     def get_open_position(self, symbol: str):
         return None
 
     def get_recent_fills(self, symbol: str):
+        return []
+
+    def fetch_open_orders(self, *, symbol: str):
         return []
 
     def get_candles(self, symbol: str, *, timeframe: str, limit: int):
@@ -139,6 +153,35 @@ min_atr_percent = "0.1"
 stop_atr_multiple = "1.5"
 trailing_atr_multiple = "2.0"
 state_file = "/state/momentum.json"
+
+[runtime]
+dry_run = true
+""",
+        resolve_state_paths=False,
+    )
+
+
+def grid_config():
+    return load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/grid.json"
 
 [runtime]
 dry_run = true
@@ -371,3 +414,92 @@ def test_momentum_status_command_prints_entry_diagnostics_when_flat(monkeypatch,
     assert "latest_close=" in output
     assert "breakout_level=" in output
     assert "adx=" in output
+
+
+def test_grid_status_command_prints_grid_summary(monkeypatch, capsys) -> None:
+    config = grid_config()
+    state = GridBotState()
+    state.initialize_grid(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        price_band_low=Decimal("1800"),
+        price_band_high=Decimal("2200"),
+        grid_levels=5,
+        spacing_mode="arithmetic",
+        quote_amount_per_level=Decimal("100"),
+        prices=[Decimal("1800"), Decimal("1900"), Decimal("2000"), Decimal("2100"), Decimal("2200")],
+        when=__import__("datetime").datetime(2026, 3, 20, tzinfo=__import__("datetime").timezone.utc),
+    )
+
+    monkeypatch.setattr(cli, "load_config", lambda path: config)
+    monkeypatch.setattr(cli, "build_exchange", lambda config, logger: DummyExchange())
+    monkeypatch.setattr(cli, "load_grid_state", lambda path: state)
+    monkeypatch.setattr(
+        cli,
+        "build_parser",
+        lambda: type(
+            "Parser",
+            (),
+            {
+                "parse_args": lambda self: type(
+                    "Args",
+                    (),
+                    {
+                        "config": "config.toml",
+                        "once": False,
+                        "instrument": None,
+                        "position_config": False,
+                        "status": True,
+                        "thresholds": False,
+                        "recovery_status": False,
+                        "notify_test": False,
+                    },
+                )()
+            },
+        )(),
+    )
+
+    cli.main()
+    output = capsys.readouterr().out
+
+    assert "configured_side=buy" in output
+    assert "grid_levels=5" in output
+    assert "price_band_low=1800" in output
+
+
+def test_grid_recovery_status_command_prints_recovery_decision(monkeypatch, capsys) -> None:
+    config = grid_config()
+
+    monkeypatch.setattr(cli, "load_config", lambda path: config)
+    monkeypatch.setattr(cli, "build_exchange", lambda config, logger: DummyExchange())
+    monkeypatch.setattr(cli, "load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr(
+        cli,
+        "build_parser",
+        lambda: type(
+            "Parser",
+            (),
+            {
+                "parse_args": lambda self: type(
+                    "Args",
+                    (),
+                    {
+                        "config": "config.toml",
+                        "once": False,
+                        "instrument": None,
+                        "position_config": False,
+                        "status": False,
+                        "thresholds": False,
+                        "recovery_status": True,
+                        "notify_test": False,
+                    },
+                )()
+            },
+        )(),
+    )
+
+    cli.main()
+    output = capsys.readouterr().out
+
+    assert "decision=initialize-from-config" in output
+    assert "local_grid_initialized=false" in output

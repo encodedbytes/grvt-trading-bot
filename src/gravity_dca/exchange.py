@@ -210,6 +210,9 @@ class GrvtExchange:
     def fetch_order(self, *, order_id: str | None = None, client_order_id: str | None = None) -> dict:
         return self._trading.fetch_order(order_id=order_id, client_order_id=client_order_id)
 
+    def fetch_open_orders(self, *, symbol: str) -> list[dict]:
+        return self._trading.fetch_open_orders(symbol=symbol)
+
     def parse_fill_report(self, response: dict) -> FillReport | None:
         return self._trading.parse_fill_report(response)
 

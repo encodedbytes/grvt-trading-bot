@@ -7,6 +7,7 @@ import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
+import tarfile
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -27,6 +28,7 @@ from .dashboard_runtime import (
     list_running_bot_containers,
     load_recent_log_info as _load_recent_log_info,
 )
+from .grid_state import GridBotState, load_grid_state, load_grid_state_text
 from .momentum_state import MomentumBotState, load_momentum_state, load_momentum_state_text
 from .state import BotState, load_state, load_state_text
 from .status_snapshot import build_status_snapshot, new_runtime_status
@@ -42,9 +44,17 @@ def _to_text(value: Any) -> str | None:
     return str(value)
 
 
+def _empty_state_for_strategy(strategy_type: str) -> BotState | MomentumBotState | GridBotState:
+    if strategy_type == "momentum":
+        return MomentumBotState()
+    if strategy_type == "grid":
+        return GridBotState()
+    return BotState()
+
+
 def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
     LOGGER.info("Summarizing container=%s config=%s", container.name, container.config_source)
-    state: BotState | MomentumBotState = BotState()
+    state: BotState | MomentumBotState | GridBotState = BotState()
     config: AppConfig | None = None
     config_file = container.config_source
     state_file: Path | None = None
@@ -76,6 +86,25 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
                         state = MomentumBotState()
                 symbol = settings.symbol
                 active_runtime = state.active_position is not None
+            elif config.strategy_type == "grid":
+                settings = config.grid
+                if settings is None:
+                    raise ValueError("Grid config is missing [grid] settings")
+                state_file = settings.state_file
+                if state_file.exists():
+                    state = load_grid_state(state_file)
+                else:
+                    try:
+                        state = load_grid_state_text(
+                            _docker_api_read_file(container.id, str(state_file)).decode("utf-8")
+                        )
+                    except (FileNotFoundError, OSError, tarfile.TarError):
+                        state = GridBotState()
+                symbol = settings.symbol
+                active_runtime = any(
+                    level.status in {"buy_open", "filled_inventory", "sell_open"}
+                    for level in state.levels
+                )
             else:
                 state_file = config.dca.state_file
                 if state_file.exists():
@@ -96,10 +125,12 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
                 symbol,
                 state_file,
                 active_runtime,
-                state.completed_cycles,
+                getattr(state, "completed_cycles", getattr(state, "completed_round_trips", 0)),
             )
         except Exception as exc:  # pragma: no cover - defensive serialization path
             load_error = f"{type(exc).__name__}: {exc}"
+            if config is not None:
+                state = _empty_state_for_strategy(config.strategy_type)
             LOGGER.exception("Failed to load config/state for container=%s", container.name)
     status_payload = (
         _fetch_bot_status_from_api(container, port=config.runtime.bot_api_port)
