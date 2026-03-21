@@ -256,3 +256,83 @@ def test_grid_bot_cancels_stale_buy_order(monkeypatch) -> None:
 
     assert result is True
     assert bot._exchange.canceled_orders[0]["order_id"] == "0xstale"
+
+
+def test_grid_bot_does_not_duplicate_live_raw_grvt_open_orders(monkeypatch) -> None:
+    saved: list[GridBotState] = []
+    bot = GridBot.__new__(GridBot)
+    bot._config = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "2050"
+price_band_high = "2250"
+grid_levels = 6
+quote_amount_per_level = "50"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        resolve_state_paths=False,
+    )
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(
+        market_price="2156",
+        open_orders=[
+            {
+                "id": "0xbuy2",
+                "reduce_only": False,
+                "legs": [
+                    {
+                        "instrument": "ETH_USDT_Perp",
+                        "size": "0.023474178",
+                        "limit_price": "2130.0",
+                        "is_buying_asset": True,
+                    }
+                ],
+                "metadata": {"client_order_id": "grid-buy-level-2"},
+                "state": {"status": "OPEN", "book_size": ["0.023474178"], "traded_size": ["0.0"]},
+            },
+            {
+                "id": "0xbuy1",
+                "reduce_only": False,
+                "legs": [
+                    {
+                        "instrument": "ETH_USDT_Perp",
+                        "size": "0.023923445",
+                        "limit_price": "2090.0",
+                        "is_buying_asset": True,
+                    }
+                ],
+                "metadata": {"client_order_id": "grid-buy-level-1"},
+                "state": {"status": "OPEN", "book_size": ["0.023923445"], "traded_size": ["0.0"]},
+            },
+        ],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: saved.append(state))
+
+    result = bot.run_once()
+
+    assert result is False
+    assert bot._exchange.placed_orders == []
+    assert saved[-1].level(2).status == "buy_open"
+    assert saved[-1].level(1).status == "buy_open"
