@@ -826,6 +826,12 @@ HTML_PAGE = """<!doctype html>
                 field("SL %", bot.stop_loss_percent)
               ];
           var strategyStatusRows = [];
+          var signalInfoRows = [
+            field("Detail source", bot.detail_source),
+            field("Signal status", bot.signal_status),
+            field("Signal source", bot.signal_source),
+            field("Signal note", bot.signal_note)
+          ];
           if (bot.strategy_type === "momentum" && bot.strategy_status) {
             if (bot.strategy_status.mode === "entry") {
               strategyStatusRows = [
@@ -881,6 +887,11 @@ HTML_PAGE = """<!doctype html>
           ];
           if (strategyStatusRows.length) {
             sections.push(renderDrawerSection("Signals", strategyStatusRows));
+          } else if (bot.strategy_type === "momentum") {
+            sections.push(renderDrawerSection("Signals", signalInfoRows));
+          }
+          if (bot.strategy_type !== "momentum") {
+            sections.push(renderDrawerSection("Data source", signalInfoRows.slice(0, 2)));
           }
           document.getElementById("drawer-title").textContent = bot.symbol;
           document.getElementById("drawer-subtitle").textContent = bot.container_name + " • " + bot.environment + " • " + bot.container_state + " • " + bot.lifecycle_state;

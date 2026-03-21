@@ -121,6 +121,14 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             risk_reduce_only_reason=status_payload["runtime_status"].get("risk_reduce_only_reason"),
             recent_error=status_payload["runtime_status"]["last_iteration_error"] or recent_error,
             last_log_line=last_log_line,
+            detail_source="bot-api",
+            signal_source="bot-api" if normalized.get("strategy_status") is not None else None,
+            signal_status="available" if normalized.get("strategy_status") is not None else "unavailable",
+            signal_note=(
+                None
+                if normalized.get("strategy_status") is not None
+                else "Bot API is reachable, but the bot did not expose live signal diagnostics for this state."
+            ),
         )
     if config is None:
         LOGGER.warning("Container=%s has no usable config; returning error summary", container.name)
@@ -155,6 +163,18 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
         risk_reduce_only_reason=None,
         recent_error=recent_error,
         last_log_line=last_log_line,
+        detail_source="docker-fallback",
+        signal_source=None,
+        signal_status=(
+            "fallback-unavailable"
+            if normalized["strategy_type"] == "momentum"
+            else "not-applicable"
+        ),
+        signal_note=(
+            "Live signal diagnostics are unavailable because the dashboard is using Docker fallback data instead of the bot API."
+            if normalized["strategy_type"] == "momentum"
+            else None
+        ),
     )
 
 

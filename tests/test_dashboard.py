@@ -88,6 +88,8 @@ def test_summarize_bot_container_with_active_cycle(tmp_path, monkeypatch) -> Non
     assert summary["active_cycle"]["completed_safety_orders"] == 1
     assert summary["thresholds"]["take_profit_price"] is not None
     assert summary["bot_api_port"] == 8787
+    assert summary["detail_source"] == "docker-fallback"
+    assert summary["signal_status"] == "not-applicable"
 
 
 def test_summarize_bot_container_with_momentum_state(tmp_path, monkeypatch) -> None:
@@ -164,6 +166,8 @@ bot_api_port = 8788
     assert summary["thresholds"]["trailing_stop_price"] == "2147"
     assert summary["thresholds"]["stop_loss_price"] == "2147"
     assert summary["bot_api_port"] == 8788
+    assert summary["detail_source"] == "docker-fallback"
+    assert summary["signal_status"] == "fallback-unavailable"
 
 
 def test_collect_dashboard_payload_counts_inactive_max_cycles(monkeypatch) -> None:
@@ -410,6 +414,8 @@ bot_api_port = 8787
     assert summary["bot_api_port"] == 8787
     assert summary["risk_reduce_only"] is True
     assert summary["risk_reduce_only_reason"] == "Only risk-reducing orders are permitted"
+    assert summary["detail_source"] == "bot-api"
+    assert summary["signal_status"] == "unavailable"
 
 
 def test_summarize_bot_container_normalizes_momentum_bot_api(monkeypatch, tmp_path) -> None:
@@ -536,6 +542,8 @@ bot_api_port = 8788
     assert summary["thresholds"]["stop_loss_price"] == "2147"
     assert summary["initial_quote_amount"] == "150"
     assert summary["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
+    assert summary["detail_source"] == "bot-api"
+    assert summary["signal_status"] == "available"
 
 
 def test_summarize_bot_container_uses_configured_api_port(monkeypatch, tmp_path) -> None:
@@ -654,6 +662,9 @@ def test_dashboard_html_surfaces_momentum_signal_details() -> None:
     assert 'renderDrawerSection("Signals", strategyStatusRows)' in dashboard.HTML_PAGE
     assert 'field("Entry reason", bot.strategy_status.entry_reason)' in dashboard.HTML_PAGE
     assert 'field("ATR %", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr_percent)' in dashboard.HTML_PAGE
+    assert 'field("Detail source", bot.detail_source)' in dashboard.HTML_PAGE
+    assert 'field("Signal status", bot.signal_status)' in dashboard.HTML_PAGE
+    assert 'field("Signal note", bot.signal_note)' in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_formats_timestamps_with_intl() -> None:

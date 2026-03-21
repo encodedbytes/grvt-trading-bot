@@ -97,10 +97,16 @@ def test_build_container_summary_attaches_runtime_fields() -> None:
         risk_reduce_only_reason="Only risk-reducing orders are permitted",
         recent_error="ValueError: boom",
         last_log_line="line",
+        detail_source="bot-api",
+        signal_source=None,
+        signal_status="unavailable",
+        signal_note="No live signals.",
     )
 
     assert summary["container_id"] == "abc123"
     assert summary["symbol"] == "BTC_USDT_Perp"
     assert summary["active_trade_kind"] == "cycle"
+    assert summary["detail_source"] == "bot-api"
+    assert summary["signal_status"] == "unavailable"
     assert summary["risk_reduce_only"] is True
     assert summary["recent_error"] == "ValueError: boom"

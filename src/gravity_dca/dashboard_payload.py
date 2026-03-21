@@ -120,6 +120,10 @@ def build_container_summary(
     risk_reduce_only_reason: str | None,
     recent_error: str | None,
     last_log_line: str | None,
+    detail_source: str,
+    signal_source: str | None,
+    signal_status: str,
+    signal_note: str | None,
 ) -> dict[str, Any]:
     return {
         "container_name": container_name,
@@ -133,6 +137,10 @@ def build_container_summary(
         "risk_reduce_only_reason": risk_reduce_only_reason,
         "recent_error": recent_error,
         "last_log_line": last_log_line,
+        "detail_source": detail_source,
+        "signal_source": signal_source,
+        "signal_status": signal_status,
+        "signal_note": signal_note,
     }
 
 
@@ -176,4 +184,8 @@ def build_error_summary(
         "risk_reduce_only_reason": None,
         "recent_error": recent_error,
         "last_log_line": last_log_line,
+        "detail_source": "error",
+        "signal_source": None,
+        "signal_status": "unavailable",
+        "signal_note": "Container details could not be loaded.",
     }

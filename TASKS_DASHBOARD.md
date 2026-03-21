@@ -1,8 +1,8 @@
 # Dashboard Architecture Improvements
 
-Status: planned
+Status: implemented
 
-This file is the persistent implementation plan for structural dashboard work after the momentum rollout.
+This file is the persistent implementation record for the structural dashboard work that followed the momentum rollout.
 
 ## Objective
 
@@ -122,7 +122,7 @@ Delivered:
 
 ## Phase 5: Operational Hardening
 
-Status: planned
+Status: implemented
 
 Goal:
 - reduce operator ambiguity when the dashboard is partially degraded
@@ -135,6 +135,31 @@ Tasks:
 Completion criteria:
 - the operator can tell whether a detail view is API-backed or fallback-backed
 - degraded mode does not silently hide important runtime context
+
+Delivered:
+- added explicit detail-source metadata such as `bot-api`, `docker-fallback`, and `error`
+- surfaced signal availability/status in the dashboard payload and drawer
+- made fallback mode explain when live momentum diagnostics are unavailable because the dashboard is not reading the bot API
+- added regression coverage for API-backed and fallback-backed detail summaries
+
+## Outcome
+
+The dashboard now has a cleaner responsibility split:
+
+- `dashboard.py`
+  - thin HTTP entry point and orchestration
+- `dashboard_payload.py`
+  - shared bot-summary shaping and normalization
+- `dashboard_runtime.py`
+  - Docker and bot-API runtime access
+- `dashboard_template.py`
+  - static HTML/CSS/JS page template
+
+Operator-facing behavior also improved:
+
+- drawers explicitly show whether details came from the bot API or Docker fallback
+- momentum signal diagnostics now explain when they are unavailable in fallback mode
+- the payload contract uses generic trade fields instead of leaking DCA-only naming into momentum views
 
 ## Notes For Future Sessions
 
