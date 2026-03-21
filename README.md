@@ -6,6 +6,7 @@ Planning documents:
 - [TASKS.md](TASKS.md)
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
+- [TASKS_DASHBOARD.md](TASKS_DASHBOARD.md)
 
 Momentum strategy config example:
 - [config.momentum.example.toml](config.momentum.example.toml)

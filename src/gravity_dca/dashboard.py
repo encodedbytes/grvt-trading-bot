@@ -18,6 +18,12 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 from .config import AppConfig, load_config, load_config_text
+from .dashboard_payload import (
+    build_container_summary,
+    build_error_summary,
+    empty_thresholds,
+    normalize_status_payload,
+)
 from .momentum_state import MomentumBotState, load_momentum_state, load_momentum_state_text
 from .state import BotState, load_state, load_state_text
 from .status_snapshot import build_status_snapshot, new_runtime_status
@@ -1273,98 +1279,6 @@ def list_running_bot_containers() -> list[DockerContainer]:
     return containers
 
 
-def _empty_thresholds() -> dict[str, str | None]:
-    return {
-        "take_profit_price": None,
-        "stop_loss_price": None,
-        "next_safety_trigger_price": None,
-        "initial_stop_price": None,
-        "trailing_stop_price": None,
-        "fixed_take_profit_price": None,
-    }
-
-
-def _normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
-    strategy_type = status_payload.get("strategy_type", "dca")
-    thresholds = dict(_empty_thresholds())
-    thresholds.update(status_payload.get("thresholds", {}))
-    runtime_status = status_payload.get("runtime_status", {})
-    if strategy_type == "momentum":
-        thresholds["take_profit_price"] = (
-            thresholds.get("take_profit_price") or thresholds.get("fixed_take_profit_price")
-        )
-        thresholds["stop_loss_price"] = (
-            thresholds.get("stop_loss_price")
-            or thresholds.get("trailing_stop_price")
-            or thresholds.get("initial_stop_price")
-        )
-        return {
-            "strategy_type": "momentum",
-            "state_file": status_payload["state_file"],
-            "symbol": status_payload["symbol"],
-            "environment": status_payload["environment"],
-            "order_type": status_payload["order_type"],
-            "dry_run": status_payload["dry_run"],
-            "initial_leverage": status_payload["initial_leverage"],
-            "margin_type": status_payload["margin_type"],
-            "poll_seconds": status_payload["poll_seconds"],
-            "bot_api_port": status_payload["bot_api_port"],
-            "initial_quote_amount": status_payload.get("quote_amount"),
-            "safety_order_quote_amount": None,
-            "max_safety_orders": None,
-            "price_deviation_percent": None,
-            "take_profit_percent": status_payload.get("take_profit_percent"),
-            "stop_loss_percent": None,
-            "safety_order_step_scale": None,
-            "safety_order_volume_scale": None,
-            "telegram_enabled": status_payload["telegram_enabled"],
-            "completed_cycles": status_payload["completed_cycles"],
-            "max_cycles": status_payload["max_cycles"],
-            "active_cycle": status_payload.get("active_position"),
-            "thresholds": thresholds,
-            "last_closed_cycle": status_payload.get("last_closed_position"),
-            "timeframe": status_payload.get("timeframe"),
-            "ema_fast_period": status_payload.get("ema_fast_period"),
-            "ema_slow_period": status_payload.get("ema_slow_period"),
-            "breakout_lookback": status_payload.get("breakout_lookback"),
-            "adx_period": status_payload.get("adx_period"),
-            "min_adx": status_payload.get("min_adx"),
-            "atr_period": status_payload.get("atr_period"),
-            "min_atr_percent": status_payload.get("min_atr_percent"),
-            "stop_atr_multiple": status_payload.get("stop_atr_multiple"),
-            "trailing_atr_multiple": status_payload.get("trailing_atr_multiple"),
-            "use_trend_failure_exit": status_payload.get("use_trend_failure_exit"),
-            "strategy_status": runtime_status.get("strategy_status"),
-        }
-    return {
-        "strategy_type": "dca",
-        "state_file": status_payload["state_file"],
-        "symbol": status_payload["symbol"],
-        "environment": status_payload["environment"],
-        "order_type": status_payload["order_type"],
-        "dry_run": status_payload["dry_run"],
-        "initial_leverage": status_payload["initial_leverage"],
-        "margin_type": status_payload["margin_type"],
-        "poll_seconds": status_payload["poll_seconds"],
-        "bot_api_port": status_payload["bot_api_port"],
-        "initial_quote_amount": status_payload["initial_quote_amount"],
-        "safety_order_quote_amount": status_payload["safety_order_quote_amount"],
-        "max_safety_orders": status_payload["max_safety_orders"],
-        "price_deviation_percent": status_payload["price_deviation_percent"],
-        "take_profit_percent": status_payload["take_profit_percent"],
-        "stop_loss_percent": status_payload["stop_loss_percent"],
-        "safety_order_step_scale": status_payload["safety_order_step_scale"],
-        "safety_order_volume_scale": status_payload["safety_order_volume_scale"],
-        "telegram_enabled": status_payload["telegram_enabled"],
-        "completed_cycles": status_payload["completed_cycles"],
-        "max_cycles": status_payload["max_cycles"],
-        "active_cycle": status_payload["active_cycle"],
-        "thresholds": thresholds,
-        "last_closed_cycle": status_payload["last_closed_cycle"],
-        "strategy_status": runtime_status.get("strategy_status"),
-    }
-
-
 def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
     LOGGER.info("Summarizing container=%s config=%s", container.name, container.config_source)
     state: BotState | MomentumBotState = BotState()
@@ -1431,53 +1345,33 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
     )
     if status_payload is not None:
         LOGGER.info("Loaded bot status via bot API for container=%s", container.name)
-        normalized = _normalize_status_payload(status_payload)
-        return {
-            "container_name": container.name,
-            "container_id": container.id,
-            "container_state": _container_state(container.status),
-            "lifecycle_state": status_payload["lifecycle_state"],
-            "image": container.image,
-            "config_file": str(config_file) if config_file is not None else "/app/config.toml",
-            **normalized,
-            "risk_reduce_only": status_payload["runtime_status"].get("risk_reduce_only", False),
-            "risk_reduce_only_reason": status_payload["runtime_status"].get(
-                "risk_reduce_only_reason"
-            ),
-            "recent_error": status_payload["runtime_status"]["last_iteration_error"] or recent_error,
-            "last_log_line": last_log_line,
-        }
+        normalized = normalize_status_payload(status_payload)
+        return build_container_summary(
+            container_name=container.name,
+            container_id=container.id,
+            container_state=_container_state(container.status),
+            lifecycle_state=status_payload["lifecycle_state"],
+            image=container.image,
+            config_file=str(config_file) if config_file is not None else "/app/config.toml",
+            normalized_status=normalized,
+            risk_reduce_only=status_payload["runtime_status"].get("risk_reduce_only", False),
+            risk_reduce_only_reason=status_payload["runtime_status"].get("risk_reduce_only_reason"),
+            recent_error=status_payload["runtime_status"]["last_iteration_error"] or recent_error,
+            last_log_line=last_log_line,
+        )
     if config is None:
         LOGGER.warning("Container=%s has no usable config; returning error summary", container.name)
-        return {
-            "container_name": container.name,
-            "container_state": _container_state(container.status),
-            "lifecycle_state": "error",
-            "image": container.image,
-            "config_file": str(config_file) if config_file is not None else "",
-            "state_file": str(state_file) if state_file is not None else "",
-            "symbol": container.name,
-            "environment": "",
-            "order_type": "",
-            "dry_run": False,
-            "initial_leverage": None,
-            "margin_type": None,
-            "poll_seconds": None,
-            "bot_api_port": None,
-            "strategy_type": "unknown",
-            "strategy_status": None,
-            "completed_cycles": 0,
-            "max_cycles": None,
-            "active_cycle": None,
-            "thresholds": _empty_thresholds(),
-            "last_closed_cycle": None,
-            "risk_reduce_only": False,
-            "risk_reduce_only_reason": None,
-            "recent_error": load_error or recent_error,
-            "last_log_line": last_log_line,
-        }
+        return build_error_summary(
+            container_name=container.name,
+            container_state=_container_state(container.status),
+            image=container.image,
+            config_file=str(config_file) if config_file is not None else "",
+            state_file=str(state_file) if state_file is not None else "",
+            recent_error=load_error or recent_error,
+            last_log_line=last_log_line,
+        )
     status_payload = build_status_snapshot(config, state, new_runtime_status())
-    normalized = _normalize_status_payload(status_payload)
+    normalized = normalize_status_payload(status_payload)
     active_runtime = normalized["active_cycle"] is not None
     LOGGER.info(
         "Container=%s lifecycle_state=%s strategy=%s active_runtime=%s",
@@ -1486,19 +1380,19 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
         normalized["strategy_type"],
         active_runtime,
     )
-    return {
-        "container_name": container.name,
-        "container_id": container.id,
-        "container_state": _container_state(container.status),
-        "lifecycle_state": status_payload["lifecycle_state"],
-        "image": container.image,
-        "config_file": str(config_file),
-        **normalized,
-        "risk_reduce_only": False,
-        "risk_reduce_only_reason": None,
-        "recent_error": recent_error,
-        "last_log_line": last_log_line,
-    }
+    return build_container_summary(
+        container_name=container.name,
+        container_id=container.id,
+        container_state=_container_state(container.status),
+        lifecycle_state=status_payload["lifecycle_state"],
+        image=container.image,
+        config_file=str(config_file),
+        normalized_status=normalized,
+        risk_reduce_only=False,
+        risk_reduce_only_reason=None,
+        recent_error=recent_error,
+        last_log_line=last_log_line,
+    )
 
 
 def collect_dashboard_payload() -> dict[str, Any]:
