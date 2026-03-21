@@ -20,6 +20,7 @@ Before making changes or running the bot again, check:
 - [TASKS.md](TASKS.md) if resuming limit-order work
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md) if resuming Telegram notification work
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md) if resuming momentum strategy work
+- [TASKS_DASHBOARD.md](TASKS_DASHBOARD.md) if resuming dashboard architecture work
 - whether current work should happen on a feature branch instead of `main`
 
 ## Current Operational Facts
@@ -32,12 +33,14 @@ Before making changes or running the bot again, check:
 - The momentum bot now has a separate runtime, state model, recovery flow, and CLI diagnostics (`status`, `thresholds`, `recovery-status`).
 - Momentum `status` now prints flat-state entry diagnostics too, including `entry_decision`, `entry_reason`, `breakout_level`, `ema_fast`, `ema_slow`, `adx`, and `atr_percent`.
 - The dashboard now shows a momentum `Signals` section with live entry/exit diagnostics from the bot-local API.
+- The dashboard architecture work is complete: payload shaping, runtime access, and the static template now live in separate modules instead of one monolithic dashboard file.
 - Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
 - Optional config values should be omitted entirely when unused; TOML `null` is invalid and the loader now raises a clearer operator-facing error for that case.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
+- The dashboard drawer now exposes whether details are coming from `bot-api`, `docker-fallback`, or `error`, and momentum signal diagnostics explicitly note when fallback mode cannot provide live signals.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.
@@ -93,6 +96,9 @@ Docker image defaults:
 - [src/gravity_dca/bot_api.py](src/gravity_dca/bot_api.py)
 - [src/gravity_dca/status_snapshot.py](src/gravity_dca/status_snapshot.py)
 - [src/gravity_dca/dashboard.py](src/gravity_dca/dashboard.py)
+- [src/gravity_dca/dashboard_payload.py](src/gravity_dca/dashboard_payload.py)
+- [src/gravity_dca/dashboard_runtime.py](src/gravity_dca/dashboard_runtime.py)
+- [src/gravity_dca/dashboard_template.py](src/gravity_dca/dashboard_template.py)
 
 ## Safe Defaults
 

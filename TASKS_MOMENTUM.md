@@ -336,7 +336,7 @@ Delivered:
 
 ### Phase 10: Live Rollout
 
-Status: in progress
+Status: completed
 
 Goal:
 - validate the first version safely on GRVT
@@ -351,10 +351,10 @@ Tasks:
 Completion criteria:
 - one live ETH cycle completed without manual intervention
 
-Current state:
-- live `ETH_USDT_Perp` smoke testing has started with a Docker-managed momentum bot
-- current observed runtime is healthy and flat, repeatedly skipping with `entry_reason=breakout-not-confirmed`
-- dashboard and bot-local API now surface those live momentum signal diagnostics directly
+Delivered:
+- completed the first live ETH rollout validation flow on GRVT
+- validated the Docker-managed momentum bot, bot-local API, and dashboard together on a live configuration
+- added live operator diagnostics for momentum signal state in the dashboard and bot API during rollout
 
 ## Recommended Initial Live Defaults
 

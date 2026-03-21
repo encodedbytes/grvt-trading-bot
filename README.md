@@ -6,6 +6,7 @@ Planning documents:
 - [TASKS.md](TASKS.md)
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
+- [TASKS_DASHBOARD.md](TASKS_DASHBOARD.md)
 
 Momentum strategy config example:
 - [config.momentum.example.toml](config.momentum.example.toml)
@@ -100,6 +101,8 @@ Run the local web dashboard for Docker-managed bots:
 ```bash
 make dashboard
 ```
+
+The dashboard prefers each bot's local read-only status API. When that API is unavailable, it falls back to Docker inspection and the drawer shows that degraded source explicitly so you can tell when live signal diagnostics are unavailable.
 
 Run tests:
 
@@ -255,6 +258,8 @@ Build the dashboard image:
 ```bash
 make dashboard-docker-build
 ```
+
+Dashboard detail views use the bot-local API when possible and fall back to Docker-based inspection when necessary. In fallback mode, the drawer now tells you that live momentum `Signals` data is unavailable because the bot API could not be reached.
 
 For Docker, mount a writable `state/` directory and point `state_file` to `/state/...`, for example:
 
