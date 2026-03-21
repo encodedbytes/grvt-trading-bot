@@ -117,6 +117,36 @@ def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
     return path
 
 
+def _format_toml_decode_error(
+    raw_text: str,
+    exc: tomllib.TOMLDecodeError,
+    *,
+    config_path: str | Path,
+) -> ValueError:
+    line_number = getattr(exc, "lineno", None)
+    column_number = getattr(exc, "colno", None)
+    lines = raw_text.splitlines()
+    line_text = ""
+    if line_number is not None and 1 <= line_number <= len(lines):
+        line_text = lines[line_number - 1].strip()
+
+    details = [f"Invalid TOML in {config_path}"]
+    if line_number is not None and column_number is not None:
+        details.append(f"at line {line_number}, column {column_number}")
+
+    if "null" in line_text.lower():
+        details.append(
+            "TOML does not support `null`; remove the key entirely to leave an optional value unset."
+        )
+    else:
+        details.append(str(exc))
+
+    if line_text:
+        details.append(f"offending_line={line_text}")
+
+    return ValueError(": ".join(details))
+
+
 def _build_app_config(
     raw: dict,
     *,
@@ -277,7 +307,10 @@ def load_config_text(
     config_path: str | Path = "<memory>",
     resolve_state_paths: bool = True,
 ) -> AppConfig:
-    raw = tomllib.loads(raw_text)
+    try:
+        raw = tomllib.loads(raw_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise _format_toml_decode_error(raw_text, exc, config_path=config_path) from exc
     return _build_app_config(
         raw,
         config_path=config_path,

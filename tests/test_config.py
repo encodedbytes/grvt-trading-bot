@@ -370,6 +370,41 @@ dry_run = true
     assert config.momentum.state_file == Path(".gravity-momentum-state.json")
 
 
+def test_load_config_reports_friendly_error_for_null_values() -> None:
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "TOML does not support `null`; remove the key entirely to leave an optional value unset."
+        ),
+    ):
+        load_config_text(
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+quote_amount = "500"
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+take_profit_percent = null
+""",
+            config_path="config.momentum.toml",
+            resolve_state_paths=False,
+        )
+
+
 @pytest.mark.parametrize(
     ("raw_text", "message"),
     [

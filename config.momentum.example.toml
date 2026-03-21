@@ -25,7 +25,6 @@ min_atr_percent = "0.4"
 stop_atr_multiple = "1.5"
 trailing_atr_multiple = "2.0"
 use_trend_failure_exit = true
-take_profit_percent = null
 
 state_file = ".gravity-momentum-state.json"
 
