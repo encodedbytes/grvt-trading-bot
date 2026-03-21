@@ -270,6 +270,7 @@ grid_levels = 5
 quote_amount_per_level = "100"
 max_active_buy_orders = 2
 max_inventory_levels = 2
+seed_enabled = true
 state_file = "/state/grid.json"
 
 [runtime]
@@ -313,5 +314,6 @@ poll_seconds = 30
     assert snapshot["strategy_type"] == "grid"
     assert snapshot["lifecycle_state"] == "active"
     assert snapshot["price_band_low"] == "1800"
+    assert snapshot["seed_enabled"] is True
     assert snapshot["active_grid"]["active_inventory_levels"] == 1
     assert snapshot["levels"][1]["status"] == "filled_inventory"

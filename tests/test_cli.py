@@ -465,6 +465,7 @@ def test_grid_status_command_prints_grid_summary(monkeypatch, capsys) -> None:
     assert "configured_side=buy" in output
     assert "grid_levels=5" in output
     assert "price_band_low=1800" in output
+    assert "seed_enabled=false" in output
 
 
 def test_grid_recovery_status_command_prints_recovery_decision(monkeypatch, capsys) -> None:
@@ -503,3 +504,53 @@ def test_grid_recovery_status_command_prints_recovery_decision(monkeypatch, caps
 
     assert "decision=initialize-from-config" in output
     assert "local_grid_initialized=false" in output
+
+
+def test_normalize_grid_open_orders_supports_raw_grvt_shape() -> None:
+    settings = grid_config().grid
+    assert settings is not None
+
+    class RawOrderExchange(DummyExchange):
+        def round_price(self, price: Decimal, tick_size: Decimal) -> Decimal:
+            return (price // tick_size) * tick_size
+
+        def fetch_open_orders(self, *, symbol: str):
+            return [
+                {
+                    "id": "0xbuy",
+                    "reduce_only": False,
+                    "legs": [
+                        {
+                            "instrument": "ETH_USDT_Perp",
+                            "size": "0.143",
+                            "limit_price": "2090.0",
+                            "is_buying_asset": True,
+                        }
+                    ],
+                    "metadata": {"client_order_id": "grid-buy-level-1"},
+                    "state": {"status": "OPEN", "book_size": ["0.143"], "traded_size": ["0.0"]},
+                },
+                {
+                    "id": "0xsell",
+                    "reduce_only": True,
+                    "legs": [
+                        {
+                            "instrument": "ETH_USDT_Perp",
+                            "size": "0.139",
+                            "limit_price": "2170.0",
+                            "is_buying_asset": False,
+                        }
+                    ],
+                    "metadata": {"client_order_id": "grid-sell-level-2"},
+                    "state": {"status": "OPEN", "book_size": ["0.139"], "traded_size": ["0.0"]},
+                },
+            ]
+
+    normalized = cli._normalize_grid_open_orders(RawOrderExchange(), settings)
+
+    assert len(normalized) == 2
+    assert normalized[0].side == "buy"
+    assert normalized[0].price == Decimal("2090")
+    assert normalized[0].client_order_id == "grid-buy-level-1"
+    assert normalized[1].side == "sell"
+    assert normalized[1].reduce_only is True

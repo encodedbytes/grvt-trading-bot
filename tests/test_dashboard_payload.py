@@ -132,6 +132,7 @@ def test_normalize_status_payload_maps_grid_fields() -> None:
             "quote_amount_per_level": "100",
             "max_active_buy_orders": 2,
             "max_inventory_levels": 2,
+            "seed_enabled": True,
             "telegram_enabled": True,
             "completed_cycles": 1,
             "completed_round_trips": 1,
@@ -146,4 +147,5 @@ def test_normalize_status_payload_maps_grid_fields() -> None:
     assert normalized["active_trade_kind"] == "grid"
     assert normalized["active_trade"]["active_buy_orders"] == 1
     assert normalized["price_band_low"] == "1800"
+    assert normalized["seed_enabled"] is True
     assert normalized["levels"][0]["status"] == "buy_open"

@@ -53,6 +53,18 @@ def paired_sell_price(level_index: int, levels: list[Decimal]) -> Decimal | None
     return levels[next_index]
 
 
+def seed_level_index(*, settings: GridSettings, market_price: Decimal) -> int | None:
+    levels = build_grid_levels(settings)
+    candidates = [
+        index
+        for index, price in enumerate(levels[:-1])
+        if price < market_price
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda index: levels[index])
+
+
 def _state_level_by_index(state: GridBotState) -> dict[int, GridLevelState]:
     return {level.level_index: level for level in state.levels}
 
