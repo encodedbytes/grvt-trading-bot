@@ -57,7 +57,7 @@ Delivered:
 
 ## Phase 2: Extract Runtime Access Layer
 
-Status: planned
+Status: implemented
 
 Goal:
 - separate Docker and bot-API access from payload shaping
@@ -71,9 +71,14 @@ Completion criteria:
 - `dashboard.py` no longer contains Docker transport details
 - runtime access can be unit-tested without the HTML template in scope
 
+Delivered:
+- extracted Docker socket access, Docker CLI fallback, bot API fetches, log loading, and container discovery into `gravity_dca.dashboard_runtime`
+- kept `dashboard.py` behavior-preserving by importing the runtime helpers through stable local aliases
+- added direct runtime-layer tests in `tests/test_dashboard_runtime.py`
+
 ## Phase 3: Extract Template
 
-Status: planned
+Status: implemented
 
 Goal:
 - isolate the HTML/CSS/JS page from backend logic
@@ -86,6 +91,12 @@ Tasks:
 Completion criteria:
 - UI changes no longer require editing the transport/HTTP module
 - template-level tests still pass
+
+Delivered:
+- moved the static dashboard HTML/CSS/JS page into `gravity_dca.dashboard_template`
+- kept the page string-based; no templating engine was introduced
+- updated `dashboard.py` to import the template module instead of owning the large inline string
+- verified the existing template assertions still pass unchanged
 
 ## Phase 4: Tighten Bot Detail Schema
 

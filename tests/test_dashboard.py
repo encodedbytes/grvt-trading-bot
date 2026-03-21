@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from gravity_dca import dashboard
+from gravity_dca import dashboard_runtime
 from gravity_dca.config import load_config_text
 from gravity_dca.momentum_state import MomentumBotState, save_momentum_state
 from gravity_dca.state import BotState
@@ -196,7 +197,7 @@ def test_docker_bin_uses_env_override(monkeypatch) -> None:
 
 def test_docker_bin_raises_actionable_error_when_missing(monkeypatch) -> None:
     monkeypatch.delenv("GRAVITY_DASHBOARD_DOCKER_BIN", raising=False)
-    monkeypatch.setattr(dashboard.shutil, "which", lambda name: None)
+    monkeypatch.setattr(dashboard_runtime.shutil, "which", lambda name: None)
 
     with pytest.raises(FileNotFoundError, match="docker CLI not found on PATH"):
         dashboard._docker_bin()
