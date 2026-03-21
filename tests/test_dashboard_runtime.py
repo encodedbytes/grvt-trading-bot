@@ -69,3 +69,42 @@ def test_fetch_bot_status_from_api_returns_first_successful_payload(monkeypatch)
 
     assert payload == {"symbol": "ETH_USDT_Perp"}
     assert calls == [("172.18.0.2", 8788), ("172.18.0.3", 8788)]
+
+
+def test_list_running_bot_containers_includes_grid_named_container(monkeypatch) -> None:
+    rows = [
+        {
+            "Id": "abc123def4567890",
+            "Image": "custom:local",
+            "Names": ["/grvt-grid-eth"],
+            "Status": "Up 1 minute",
+        },
+        {
+            "Id": "zzz999yyy8887777",
+            "Image": "postgres:16",
+            "Names": ["/postgres"],
+            "Status": "Up 2 minutes",
+        },
+    ]
+    inspect_payload = {
+        "Mounts": [
+            {"Destination": "/app/config.toml", "Source": "/tmp/config.toml"},
+            {"Destination": "/state", "Source": "/tmp/state"},
+        ],
+        "NetworkSettings": {"Networks": {"bridge": {"IPAddress": "172.18.0.9"}}},
+    }
+
+    def fake_docker_api_get(path: str) -> str:
+        if path == "/containers/json":
+            return json.dumps(rows)
+        if path == "/containers/abc123def4567890/json":
+            return json.dumps(inspect_payload)
+        raise AssertionError(f"Unexpected path: {path}")
+
+    monkeypatch.setattr(dashboard_runtime, "docker_api_get", fake_docker_api_get)
+
+    containers = dashboard_runtime.list_running_bot_containers()
+
+    assert len(containers) == 1
+    assert containers[0].name == "grvt-grid-eth"
+    assert containers[0].network_ips == ["172.18.0.9"]

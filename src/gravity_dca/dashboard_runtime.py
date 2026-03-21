@@ -186,6 +186,12 @@ def find_mount_source(mounts: list[dict[str, Any]], destination: str) -> Path | 
     return None
 
 
+def is_gravity_bot_container(image: str, name: str) -> bool:
+    if "gravity-dca-bot" in image:
+        return True
+    return name.startswith("grvt-")
+
+
 def list_running_bot_containers() -> list[DockerContainer]:
     try:
         rows = json.loads(docker_api_get("/containers/json"))
@@ -194,7 +200,7 @@ def list_running_bot_containers() -> list[DockerContainer]:
             image = str(row.get("Image", ""))
             names = row.get("Names") or []
             name = str(names[0]).lstrip("/") if names else str(row.get("Names", ""))
-            if "gravity-dca-bot" not in image and not name.startswith("grvt-dca"):
+            if not is_gravity_bot_container(image, name):
                 continue
             inspect = json.loads(docker_api_get(f"/containers/{quote(str(row['Id']), safe='')}/json"))
             network_ips = [
@@ -228,7 +234,7 @@ def list_running_bot_containers() -> list[DockerContainer]:
         row = json.loads(line)
         image = str(row.get("Image", ""))
         name = str(row.get("Names", ""))
-        if "gravity-dca-bot" not in image and not name.startswith("grvt-dca"):
+        if not is_gravity_bot_container(image, name):
             continue
         rows.append(row)
         ids.append(str(row["ID"]))

@@ -7,6 +7,7 @@ import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
+import tarfile
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -41,6 +42,14 @@ def _to_text(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _empty_state_for_strategy(strategy_type: str) -> BotState | MomentumBotState | GridBotState:
+    if strategy_type == "momentum":
+        return MomentumBotState()
+    if strategy_type == "grid":
+        return GridBotState()
+    return BotState()
 
 
 def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
@@ -116,10 +125,12 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
                 symbol,
                 state_file,
                 active_runtime,
-                state.completed_cycles,
+                getattr(state, "completed_cycles", getattr(state, "completed_round_trips", 0)),
             )
         except Exception as exc:  # pragma: no cover - defensive serialization path
             load_error = f"{type(exc).__name__}: {exc}"
+            if config is not None:
+                state = _empty_state_for_strategy(config.strategy_type)
             LOGGER.exception("Failed to load config/state for container=%s", container.name)
     status_payload = (
         _fetch_bot_status_from_api(container, port=config.runtime.bot_api_port)

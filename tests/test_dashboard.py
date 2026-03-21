@@ -242,6 +242,63 @@ bot_api_port = 8789
     assert summary["levels"][1]["status"] == "filled_inventory"
 
 
+def test_summarize_bot_container_with_missing_grid_state_in_container(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "config.grid.eth.toml"
+    config_path.write_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "2050"
+price_band_high = "2250"
+grid_levels = 6
+quote_amount_per_level = "50"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = true
+poll_seconds = 30
+bot_api_port = 8789
+"""
+    )
+
+    def fake_read_file(container_id: str, path: str) -> bytes:
+        if path == "/state/.gravity-grid-eth.json":
+            raise OSError("missing state file")
+        raise AssertionError(f"Unexpected path: {path}")
+
+    monkeypatch.setattr(dashboard, "_load_recent_log_info", lambda name: (None, "ok"))
+    monkeypatch.setattr(dashboard, "_fetch_bot_status_from_api", lambda container, port: None)
+    monkeypatch.setattr(dashboard, "_docker_api_read_file", fake_read_file)
+    container = dashboard.DockerContainer(
+        id="grid123",
+        name="grvt-grid-eth",
+        image="gravity-dca-bot:local",
+        status="Up 2 minutes",
+        config_source=config_path,
+        state_source=None,
+        network_ips=[],
+    )
+
+    summary = dashboard.summarize_bot_container(container)
+
+    assert summary["strategy_type"] == "grid"
+    assert summary["symbol"] == "ETH_USDT_Perp"
+    assert summary["detail_source"] == "docker-fallback"
+    assert summary["active_trade"] is None
+    assert summary["grid_levels"] == 6
+
+
 def test_collect_dashboard_payload_counts_inactive_max_cycles(monkeypatch) -> None:
     monkeypatch.setattr(
         dashboard,
