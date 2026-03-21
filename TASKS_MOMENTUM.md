@@ -1,6 +1,6 @@
 # Momentum Strategy Implementation
 
-Status: planned
+Status: implemented through Phase 9; Phase 10 live rollout remains in progress
 
 This file is the persistent implementation plan for a first-pass momentum bot in this repo.
 
@@ -332,8 +332,11 @@ Delivered:
 - updated `AGENTS.md` with momentum runtime, diagnostics, and config error notes
 - corrected momentum examples to avoid invalid TOML `null` usage
 - documented flat-state momentum `status` diagnostics for skipped-entry troubleshooting
+- documented dashboard momentum `Signals` diagnostics surfaced from the bot-local API
 
 ### Phase 10: Live Rollout
+
+Status: in progress
 
 Goal:
 - validate the first version safely on GRVT
@@ -347,6 +350,11 @@ Tasks:
 
 Completion criteria:
 - one live ETH cycle completed without manual intervention
+
+Current state:
+- live `ETH_USDT_Perp` smoke testing has started with a Docker-managed momentum bot
+- current observed runtime is healthy and flat, repeatedly skipping with `entry_reason=breakout-not-confirmed`
+- dashboard and bot-local API now surface those live momentum signal diagnostics directly
 
 ## Recommended Initial Live Defaults
 

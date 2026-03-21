@@ -14,7 +14,7 @@ Python GRVT futures bot repo with:
 
 Before making changes or running the bot again, check:
 - [config.toml](config.toml)
-- current state file referenced by `dca.state_file`
+- current state file referenced by `dca.state_file` or `momentum.state_file`
 - whether a live container is running
 - whether the exchange already has an open position for the configured symbol
 - [TASKS.md](TASKS.md) if resuming limit-order work
@@ -31,6 +31,7 @@ Before making changes or running the bot again, check:
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
 - The momentum bot now has a separate runtime, state model, recovery flow, and CLI diagnostics (`status`, `thresholds`, `recovery-status`).
 - Momentum `status` now prints flat-state entry diagnostics too, including `entry_decision`, `entry_reason`, `breakout_level`, `ema_fast`, `ema_slow`, `adx`, and `atr_percent`.
+- The dashboard now shows a momentum `Signals` section with live entry/exit diagnostics from the bot-local API.
 - Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.

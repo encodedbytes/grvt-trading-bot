@@ -235,7 +235,7 @@ Build the image:
 make docker-build
 ```
 
-By default, local Docker builds use the current git-derived tag from `git describe --tags --always --dirty`, so the image names look like `gravity-dca-bot:v0.2.13-6-g21e3d04` and `gravity-dca-dashboard:v0.2.13-6-g21e3d04`.
+By default, local Docker builds use the current git-derived tag from `git describe --tags --always --dirty`, so the image names look like `gravity-dca-bot:v0.3.0-2-gabcdef1` and `gravity-dca-dashboard:v0.3.0-2-gabcdef1`.
 
 Inspect the computed local image names without building:
 
@@ -246,8 +246,8 @@ make docker-image-info
 Override the tag manually when needed:
 
 ```bash
-make docker-build IMAGE_TAG=v0.2.13
-make dashboard-docker-build IMAGE_TAG=v0.2.13
+make docker-build IMAGE_TAG=v0.3.0
+make dashboard-docker-build IMAGE_TAG=v0.3.0
 ```
 
 Build the dashboard image:
@@ -303,6 +303,7 @@ What it shows:
 - mounted config and state file paths
 - symbol, environment, order type, dry-run mode, and configured leverage
 - active cycle summary with entry, quantity, TP, SL, and next safety trigger
+- momentum signal diagnostics such as `entry_reason`, breakout, EMA, ADX, and ATR context
 - completed cycle count and last closed cycle summary
 - recent error line and most recent log line from each container
 - explicit `risk-reduce-only` runtime state when GRVT cross margin blocks exposure-increasing orders

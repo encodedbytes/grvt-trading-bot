@@ -267,13 +267,23 @@ class MomentumBot:
             ),
         )
 
-    def _set_entry_strategy_status(self, decision) -> None:
+    def _set_entry_strategy_status(
+        self,
+        decision,
+        *,
+        decision_override: str | None = None,
+        reason_override: str | None = None,
+    ) -> None:
         self._shared_status.set_strategy_status(
             {
                 "strategy_type": "momentum",
                 "mode": "entry",
-                "entry_decision": "enter" if decision.should_enter else "skip",
-                "entry_reason": decision.reason,
+                "entry_decision": (
+                    decision_override
+                    if decision_override is not None
+                    else ("enter" if decision.should_enter else "skip")
+                ),
+                "entry_reason": reason_override if reason_override is not None else decision.reason,
                 "indicator_snapshot": serialize_momentum_indicator_snapshot(
                     decision.indicator_snapshot
                 ),
@@ -290,13 +300,23 @@ class MomentumBot:
             }
         )
 
-    def _set_exit_strategy_status(self, decision) -> None:
+    def _set_exit_strategy_status(
+        self,
+        decision,
+        *,
+        decision_override: str | None = None,
+        reason_override: str | None = None,
+    ) -> None:
         self._shared_status.set_strategy_status(
             {
                 "strategy_type": "momentum",
                 "mode": "position",
-                "exit_decision": "exit" if decision.should_exit else "hold",
-                "exit_reason": decision.reason,
+                "exit_decision": (
+                    decision_override
+                    if decision_override is not None
+                    else ("exit" if decision.should_exit else "hold")
+                ),
+                "exit_reason": reason_override if reason_override is not None else decision.reason,
                 "indicator_snapshot": serialize_momentum_indicator_snapshot(
                     decision.indicator_snapshot
                 ),
@@ -309,6 +329,47 @@ class MomentumBot:
                 "highest_price_since_entry": (
                     str(decision.highest_price_since_entry)
                     if decision.highest_price_since_entry is not None
+                    else None
+                ),
+            }
+        )
+
+    def _set_live_position_status(
+        self,
+        state: MomentumBotState,
+        *,
+        indicator_snapshot=None,
+        decision: str = "hold",
+        reason: str = "active-position",
+    ) -> None:
+        position = state.active_position
+        if position is None:
+            self._shared_status.set_strategy_status(None)
+            return
+        self._shared_status.set_strategy_status(
+            {
+                "strategy_type": "momentum",
+                "mode": "position",
+                "exit_decision": decision,
+                "exit_reason": reason,
+                "indicator_snapshot": serialize_momentum_indicator_snapshot(indicator_snapshot),
+                "stop_price": (
+                    str(position.trailing_stop_price)
+                    if position.trailing_stop_price is not None
+                    else (
+                        str(position.initial_stop_price)
+                        if position.initial_stop_price is not None
+                        else None
+                    )
+                ),
+                "trailing_stop_price": (
+                    str(position.trailing_stop_price)
+                    if position.trailing_stop_price is not None
+                    else None
+                ),
+                "highest_price_since_entry": (
+                    str(position.highest_price_since_entry)
+                    if position.highest_price_since_entry is not None
                     else None
                 ),
             }
@@ -347,6 +408,11 @@ class MomentumBot:
                 return True
             report = self._submit_and_fill(plan)
             if report is None:
+                self._set_entry_strategy_status(
+                    decision,
+                    decision_override="skip",
+                    reason_override="limit-timeout",
+                )
                 self._notify(format_limit_timeout_message(plan.symbol, plan.reason, plan.client_order_id))
                 self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
                 return False
@@ -372,6 +438,12 @@ class MomentumBot:
                 timeframe=self._settings.timeframe,
             )
             self._persist_state(state)
+            self._set_live_position_status(
+                state,
+                indicator_snapshot=decision.indicator_snapshot,
+                decision="hold",
+                reason="entry-filled",
+            )
             self._notify(
                 format_fill_message(
                     symbol=plan.symbol,
@@ -421,6 +493,11 @@ class MomentumBot:
             return True
         report = self._submit_and_fill(plan)
         if report is None:
+            self._set_exit_strategy_status(
+                decision,
+                decision_override="deferred",
+                reason_override="limit-timeout",
+            )
             self._notify(format_limit_timeout_message(plan.symbol, plan.reason, plan.client_order_id))
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return metadata_changed
@@ -444,6 +521,7 @@ class MomentumBot:
                 ],
             )
         )
+        self._shared_status.set_strategy_status(None)
         self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
         return True
 

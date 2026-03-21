@@ -78,6 +78,7 @@ class SharedBotStatus:
             self.runtime.last_iteration_completed_at = when
             self.runtime.last_iteration_error = f"{type(error).__name__}: {error}"
             self.runtime.last_iteration_error_at = when
+            self.runtime.strategy_status = None
             risk_reduce_only_reason = detect_risk_reduce_only_reason(error)
             self.runtime.risk_reduce_only = risk_reduce_only_reason is not None
             self.runtime.risk_reduce_only_reason = risk_reduce_only_reason

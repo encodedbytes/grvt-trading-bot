@@ -19,9 +19,8 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 from .config import AppConfig, load_config, load_config_text
 from .momentum_state import MomentumBotState, load_momentum_state, load_momentum_state_text
-from .momentum_strategy import fixed_take_profit_price
 from .state import BotState, load_state, load_state_text
-from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
+from .status_snapshot import build_status_snapshot, new_runtime_status
 
 
 UTC = timezone.utc
@@ -1274,45 +1273,6 @@ def list_running_bot_containers() -> list[DockerContainer]:
     return containers
 
 
-def _serialize_cycle(cycle: Any) -> dict[str, str | int | None]:
-    return {
-        "started_at": cycle.started_at,
-        "side": cycle.side,
-        "average_entry_price": str(cycle.average_entry_price),
-        "total_quantity": str(cycle.total_quantity),
-        "completed_safety_orders": cycle.completed_safety_orders,
-        "leverage": _to_text(cycle.leverage),
-        "margin_type": cycle.margin_type,
-        "last_order_id": cycle.last_order_id,
-        "last_client_order_id": cycle.last_client_order_id,
-    }
-
-
-def _serialize_momentum_position(position: Any) -> dict[str, str | None]:
-    return {
-        "started_at": position.started_at,
-        "side": position.side,
-        "average_entry_price": str(position.average_entry_price),
-        "total_quantity": str(position.total_quantity),
-        "completed_safety_orders": None,
-        "leverage": _to_text(position.leverage),
-        "margin_type": position.margin_type,
-        "last_order_id": position.last_order_id,
-        "last_client_order_id": position.last_client_order_id,
-        "highest_price_since_entry": _to_text(position.highest_price_since_entry),
-        "initial_stop_price": _to_text(position.initial_stop_price),
-        "trailing_stop_price": _to_text(position.trailing_stop_price),
-        "breakout_level": _to_text(position.breakout_level),
-        "timeframe": position.timeframe,
-    }
-
-
-def _momentum_stop_price(position: Any) -> str | None:
-    if position is None:
-        return None
-    return _to_text(position.trailing_stop_price) or _to_text(position.initial_stop_price)
-
-
 def _empty_thresholds() -> dict[str, str | None]:
     return {
         "take_profit_price": None,
@@ -1516,180 +1476,24 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             "recent_error": load_error or recent_error,
             "last_log_line": last_log_line,
         }
-    if config.strategy_type == "momentum":
-        settings = config.momentum
-        if settings is None:
-            raise ValueError("Momentum config is missing [momentum] settings")
-        active_position = state.active_position
-        lifecycle_state = "idle"
-        if active_position is not None:
-            lifecycle_state = "active"
-        elif settings.max_cycles is not None and state.completed_cycles >= settings.max_cycles:
-            lifecycle_state = "inactive-max-cycles"
-        elif not settings.state_file.exists():
-            lifecycle_state = "missing-state"
-        LOGGER.info(
-            "Container=%s lifecycle_state=%s active_position=%s",
-            container.name,
-            lifecycle_state,
-            active_position is not None,
-        )
-        return {
-            "container_name": container.name,
-            "container_id": container.id,
-            "container_state": _container_state(container.status),
-            "lifecycle_state": lifecycle_state,
-            "image": container.image,
-            "config_file": str(config_file),
-            "state_file": str(settings.state_file),
-            "symbol": settings.symbol,
-            "environment": config.credentials.environment,
-            "strategy_type": "momentum",
-            "order_type": settings.order_type,
-            "dry_run": config.runtime.dry_run,
-            "initial_leverage": _to_text(settings.initial_leverage),
-            "margin_type": settings.margin_type,
-            "poll_seconds": config.runtime.poll_seconds,
-            "bot_api_port": config.runtime.bot_api_port,
-            "initial_quote_amount": str(settings.quote_amount),
-            "safety_order_quote_amount": None,
-            "max_safety_orders": None,
-            "price_deviation_percent": None,
-            "take_profit_percent": _to_text(settings.take_profit_percent),
-            "stop_loss_percent": None,
-            "safety_order_step_scale": None,
-            "safety_order_volume_scale": None,
-            "timeframe": settings.timeframe,
-            "ema_fast_period": settings.ema_fast_period,
-            "ema_slow_period": settings.ema_slow_period,
-            "breakout_lookback": settings.breakout_lookback,
-            "adx_period": settings.adx_period,
-            "min_adx": str(settings.min_adx),
-            "atr_period": settings.atr_period,
-            "min_atr_percent": str(settings.min_atr_percent),
-            "stop_atr_multiple": str(settings.stop_atr_multiple),
-            "trailing_atr_multiple": str(settings.trailing_atr_multiple),
-            "use_trend_failure_exit": settings.use_trend_failure_exit,
-            "strategy_status": None,
-            "telegram_enabled": config.telegram.enabled,
-            "completed_cycles": state.completed_cycles,
-            "max_cycles": settings.max_cycles,
-            "active_cycle": (
-                _serialize_momentum_position(active_position) if active_position is not None else None
-            ),
-            "thresholds": {
-                **_empty_thresholds(),
-                "take_profit_price": (
-                    str(fixed_take_profit_price(active_position, settings))
-                    if active_position is not None
-                    and fixed_take_profit_price(active_position, settings) is not None
-                    else None
-                ),
-                "stop_loss_price": _momentum_stop_price(active_position),
-                "initial_stop_price": (
-                    _to_text(active_position.initial_stop_price)
-                    if active_position is not None
-                    else None
-                ),
-                "trailing_stop_price": (
-                    _to_text(active_position.trailing_stop_price)
-                    if active_position is not None
-                    else None
-                ),
-                "fixed_take_profit_price": (
-                    str(fixed_take_profit_price(active_position, settings))
-                    if active_position is not None
-                    and fixed_take_profit_price(active_position, settings) is not None
-                    else None
-                ),
-            },
-            "last_closed_cycle": (
-                {
-                    "closed_at": state.last_closed_position.closed_at,
-                    "exit_reason": state.last_closed_position.exit_reason,
-                    "exit_price": str(state.last_closed_position.exit_price),
-                    "realized_pnl_estimate": str(state.last_closed_position.realized_pnl_estimate),
-                }
-                if state.last_closed_position is not None
-                else None
-            ),
-            "risk_reduce_only": False,
-            "risk_reduce_only_reason": None,
-            "recent_error": recent_error,
-            "last_log_line": last_log_line,
-        }
-    active_cycle = state.active_cycle
-    lifecycle_state = "idle"
-    if active_cycle is not None:
-        lifecycle_state = "active"
-    elif config.dca.max_cycles is not None and state.completed_cycles >= config.dca.max_cycles:
-        lifecycle_state = "inactive-max-cycles"
-    elif not config.dca.state_file.exists():
-        lifecycle_state = "missing-state"
+    status_payload = build_status_snapshot(config, state, new_runtime_status())
+    normalized = _normalize_status_payload(status_payload)
+    active_runtime = normalized["active_cycle"] is not None
     LOGGER.info(
-        "Container=%s lifecycle_state=%s active_cycle=%s",
+        "Container=%s lifecycle_state=%s strategy=%s active_runtime=%s",
         container.name,
-        lifecycle_state,
-        active_cycle is not None,
+        status_payload["lifecycle_state"],
+        normalized["strategy_type"],
+        active_runtime,
     )
     return {
         "container_name": container.name,
         "container_id": container.id,
         "container_state": _container_state(container.status),
-        "lifecycle_state": lifecycle_state,
+        "lifecycle_state": status_payload["lifecycle_state"],
         "image": container.image,
         "config_file": str(config_file),
-        "state_file": str(config.dca.state_file),
-        "symbol": config.dca.symbol,
-        "environment": config.credentials.environment,
-        "strategy_type": "dca",
-        "strategy_status": None,
-        "order_type": config.dca.order_type,
-        "dry_run": config.runtime.dry_run,
-        "initial_leverage": _to_text(config.dca.initial_leverage),
-        "margin_type": config.dca.margin_type,
-        "poll_seconds": config.runtime.poll_seconds,
-        "bot_api_port": config.runtime.bot_api_port,
-        "initial_quote_amount": str(config.dca.initial_quote_amount),
-        "safety_order_quote_amount": str(config.dca.safety_order_quote_amount),
-        "max_safety_orders": config.dca.max_safety_orders,
-        "price_deviation_percent": str(config.dca.price_deviation_percent),
-        "take_profit_percent": str(config.dca.take_profit_percent),
-        "stop_loss_percent": _to_text(config.dca.stop_loss_percent),
-        "safety_order_step_scale": str(config.dca.safety_order_step_scale),
-        "safety_order_volume_scale": str(config.dca.safety_order_volume_scale),
-        "telegram_enabled": config.telegram.enabled,
-        "completed_cycles": state.completed_cycles,
-        "max_cycles": config.dca.max_cycles,
-        "active_cycle": _serialize_cycle(active_cycle) if active_cycle is not None else None,
-        "thresholds": {
-            **_empty_thresholds(),
-            "take_profit_price": (
-                str(take_profit_price(active_cycle, config.dca))
-                if active_cycle is not None
-                else None
-            ),
-            "stop_loss_price": (
-                _to_text(stop_loss_price(active_cycle, config.dca))
-                if active_cycle is not None
-                else None
-            ),
-            "next_safety_trigger_price": (
-                _to_text(next_safety_trigger_price(active_cycle, config.dca))
-                if active_cycle is not None
-                else None
-            ),
-        },
-        "last_closed_cycle": (
-            {
-                "closed_at": state.last_closed_cycle.closed_at,
-                "exit_reason": state.last_closed_cycle.exit_reason,
-                "exit_price": str(state.last_closed_cycle.exit_price),
-                "realized_pnl_estimate": str(state.last_closed_cycle.realized_pnl_estimate),
-            }
-            if state.last_closed_cycle is not None
-            else None
-        ),
+        **normalized,
         "risk_reduce_only": False,
         "risk_reduce_only_reason": None,
         "recent_error": recent_error,

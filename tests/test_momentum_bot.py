@@ -218,7 +218,35 @@ def test_momentum_bot_persists_entry_fill(monkeypatch) -> None:
     assert saved[-1].active_position is not None
     assert saved[-1].active_position.average_entry_price == Decimal("13.60")
     assert saved[-1].active_position.trailing_stop_price is not None
+    snapshot = bot._shared_status.snapshot()
+    assert snapshot["runtime_status"]["strategy_status"]["mode"] == "position"
+    assert snapshot["runtime_status"]["strategy_status"]["exit_reason"] == "entry-filled"
     assert any("momentum entry filled" in message for message in fake_notifier.messages)
+
+
+def test_momentum_bot_marks_entry_timeout_in_strategy_status(monkeypatch) -> None:
+    fake_notifier = FakeNotifier()
+    bot = MomentumBot.__new__(MomentumBot)
+    bot._config = config(dry_run=False)
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(bullish_breakout_candles(), report=None)
+    bot._notifier = fake_notifier
+    bot._shared_status = build_shared_status(bot._config, bot._logger)
+    bot._startup_notified = False
+    bot._recovery_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.momentum_bot.load_momentum_state", lambda path: MomentumBotState())
+    monkeypatch.setattr("gravity_dca.momentum_bot.save_momentum_state", lambda path, state: None)
+
+    result = bot.run_once()
+
+    assert result is False
+    snapshot = bot._shared_status.snapshot()
+    assert snapshot["runtime_status"]["strategy_status"]["mode"] == "entry"
+    assert snapshot["runtime_status"]["strategy_status"]["entry_decision"] == "skip"
+    assert snapshot["runtime_status"]["strategy_status"]["entry_reason"] == "limit-timeout"
 
 
 def test_momentum_bot_persists_exit_fill(monkeypatch) -> None:

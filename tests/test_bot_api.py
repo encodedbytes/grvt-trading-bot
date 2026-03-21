@@ -72,3 +72,17 @@ def test_shared_status_preserves_strategy_status() -> None:
     snapshot = shared.snapshot()
 
     assert snapshot["runtime_status"]["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
+
+
+def test_shared_status_clears_strategy_status_on_failure() -> None:
+    shared = build_shared_status(config(), logging.getLogger("gravity_dca"))
+    shared.set_strategy_status({"strategy_type": "momentum", "mode": "entry"})
+
+    shared.mark_iteration_failed(
+        "2026-03-19T00:02:00+00:00",
+        ValueError("boom"),
+    )
+
+    snapshot = shared.snapshot()
+
+    assert snapshot["runtime_status"]["strategy_status"] is None
