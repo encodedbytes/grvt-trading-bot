@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import AppConfig
+from .momentum_strategy import MomentumIndicatorSnapshot
 from .momentum_state import MomentumBotState
 from .momentum_strategy import fixed_take_profit_price
 from .state import BotState
@@ -25,10 +26,27 @@ class RuntimeStatus:
     risk_reduce_only: bool = False
     risk_reduce_only_reason: str | None = None
     risk_reduce_only_at: str | None = None
+    strategy_status: dict[str, Any] | None = None
 
 
 def new_runtime_status() -> RuntimeStatus:
     return RuntimeStatus(started_at=datetime.now(tz=UTC).isoformat())
+
+
+def serialize_momentum_indicator_snapshot(
+    snapshot: MomentumIndicatorSnapshot | None,
+) -> dict[str, str] | None:
+    if snapshot is None:
+        return None
+    return {
+        "latest_close": str(snapshot.close_price),
+        "breakout_level": str(snapshot.breakout_level),
+        "ema_fast": str(snapshot.ema_fast),
+        "ema_slow": str(snapshot.ema_slow),
+        "adx": str(snapshot.adx),
+        "atr": str(snapshot.atr),
+        "atr_percent": str(snapshot.atr_percent),
+    }
 
 
 def detect_risk_reduce_only_reason(error: Exception | str) -> str | None:
@@ -168,6 +186,7 @@ def _build_dca_status_snapshot(
             "risk_reduce_only": runtime.risk_reduce_only,
             "risk_reduce_only_reason": runtime.risk_reduce_only_reason,
             "risk_reduce_only_at": runtime.risk_reduce_only_at,
+            "strategy_status": runtime.strategy_status,
         },
     }
 
@@ -260,5 +279,6 @@ def _build_momentum_status_snapshot(
             "risk_reduce_only": runtime.risk_reduce_only,
             "risk_reduce_only_reason": runtime.risk_reduce_only_reason,
             "risk_reduce_only_at": runtime.risk_reduce_only_at,
+            "strategy_status": runtime.strategy_status,
         },
     }

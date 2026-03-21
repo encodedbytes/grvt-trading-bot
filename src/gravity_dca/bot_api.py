@@ -43,6 +43,7 @@ class SharedBotStatus:
                 risk_reduce_only=self.runtime.risk_reduce_only,
                 risk_reduce_only_reason=self.runtime.risk_reduce_only_reason,
                 risk_reduce_only_at=self.runtime.risk_reduce_only_at,
+                strategy_status=self.runtime.strategy_status,
             )
         if self.config.strategy_type == "momentum":
             if self.config.momentum is None:
@@ -67,6 +68,10 @@ class SharedBotStatus:
             self.runtime.risk_reduce_only = False
             self.runtime.risk_reduce_only_reason = None
             self.runtime.risk_reduce_only_at = None
+
+    def set_strategy_status(self, payload: dict[str, Any] | None) -> None:
+        with self.lock:
+            self.runtime.strategy_status = payload
 
     def mark_iteration_failed(self, when: str, error: Exception) -> None:
         with self.lock:

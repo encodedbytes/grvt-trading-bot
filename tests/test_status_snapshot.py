@@ -186,3 +186,64 @@ poll_seconds = 30
     assert snapshot["lifecycle_state"] == "active"
     assert snapshot["active_position"]["highest_price_since_entry"] == "2050"
     assert snapshot["thresholds"]["initial_stop_price"] == "1970"
+
+
+def test_build_status_snapshot_preserves_momentum_strategy_status() -> None:
+    config = load_config_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+quote_amount = "500"
+timeframe = "5m"
+ema_fast_period = 20
+ema_slow_period = 50
+breakout_lookback = 20
+adx_period = 14
+min_adx = "20"
+atr_period = 14
+min_atr_percent = "0.4"
+stop_atr_multiple = "1.5"
+trailing_atr_multiple = "2.0"
+state_file = "/state/eth-momentum.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        config_path=Path("/app/config.toml"),
+        resolve_state_paths=False,
+    )
+
+    snapshot = build_status_snapshot(
+        config,
+        MomentumBotState(),
+        RuntimeStatus(
+            started_at="2026-03-16T00:00:00+00:00",
+            strategy_status={
+                "strategy_type": "momentum",
+                "mode": "entry",
+                "entry_decision": "skip",
+                "entry_reason": "breakout-not-confirmed",
+                "indicator_snapshot": {
+                    "latest_close": "2152.74",
+                    "breakout_level": "2159.72",
+                    "ema_fast": "2145.10",
+                    "ema_slow": "2141.32",
+                    "adx": "21.48",
+                    "atr": "7.52",
+                    "atr_percent": "0.34",
+                },
+                "initial_stop_price": None,
+                "trailing_stop_price": None,
+            },
+        ),
+    )
+
+    assert snapshot["runtime_status"]["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
+    assert snapshot["runtime_status"]["strategy_status"]["indicator_snapshot"]["atr_percent"] == "0.34"

@@ -14,6 +14,7 @@ from .momentum_strategy import (
     evaluate_entry,
     evaluate_exit,
 )
+from .status_snapshot import serialize_momentum_indicator_snapshot
 from .strategy import (
     OrderPlan,
     compute_amount_from_quote,
@@ -266,6 +267,53 @@ class MomentumBot:
             ),
         )
 
+    def _set_entry_strategy_status(self, decision) -> None:
+        self._shared_status.set_strategy_status(
+            {
+                "strategy_type": "momentum",
+                "mode": "entry",
+                "entry_decision": "enter" if decision.should_enter else "skip",
+                "entry_reason": decision.reason,
+                "indicator_snapshot": serialize_momentum_indicator_snapshot(
+                    decision.indicator_snapshot
+                ),
+                "initial_stop_price": (
+                    str(decision.initial_stop_price)
+                    if decision.initial_stop_price is not None
+                    else None
+                ),
+                "trailing_stop_price": (
+                    str(decision.trailing_stop_price)
+                    if decision.trailing_stop_price is not None
+                    else None
+                ),
+            }
+        )
+
+    def _set_exit_strategy_status(self, decision) -> None:
+        self._shared_status.set_strategy_status(
+            {
+                "strategy_type": "momentum",
+                "mode": "position",
+                "exit_decision": "exit" if decision.should_exit else "hold",
+                "exit_reason": decision.reason,
+                "indicator_snapshot": serialize_momentum_indicator_snapshot(
+                    decision.indicator_snapshot
+                ),
+                "stop_price": str(decision.stop_price) if decision.stop_price is not None else None,
+                "trailing_stop_price": (
+                    str(decision.trailing_stop_price)
+                    if decision.trailing_stop_price is not None
+                    else None
+                ),
+                "highest_price_since_entry": (
+                    str(decision.highest_price_since_entry)
+                    if decision.highest_price_since_entry is not None
+                    else None
+                ),
+            }
+        )
+
     def run_once(self) -> bool:
         started_at = datetime.now(tz=UTC).isoformat()
         self._shared_status.mark_iteration_started(started_at)
@@ -288,6 +336,7 @@ class MomentumBot:
 
         if state.active_position is None:
             decision = evaluate_entry(candles, self._settings, state)
+            self._set_entry_strategy_status(decision)
             self._logger.info("Momentum entry decision=%s should_enter=%s", decision.reason, decision.should_enter)
             if not decision.should_enter:
                 self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
@@ -342,6 +391,7 @@ class MomentumBot:
             return True
 
         decision = evaluate_exit(candles, self._settings, state)
+        self._set_exit_strategy_status(decision)
         self._logger.info("Momentum exit decision=%s should_exit=%s", decision.reason, decision.should_exit)
         position = state.active_position
         metadata_changed = False

@@ -18,6 +18,8 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 from .config import AppConfig, load_config, load_config_text
+from .momentum_state import MomentumBotState, load_momentum_state, load_momentum_state_text
+from .momentum_strategy import fixed_take_profit_price
 from .state import BotState, load_state, load_state_text
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
 
@@ -657,19 +659,36 @@ HTML_PAGE = """<!doctype html>
       bindCardHandlers();
     }
     function renderHorizontalBot(bot, statusBadges) {
-      var primaryStats = bot.active_cycle
-        ? '<dl>'
-            + '<dt>Avg entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-            + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
-            + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
-            + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
-          + '</dl>'
-        : '<dl>'
-            + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
-            + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
-            + '<dt>State</dt><dd>' + esc(bot.lifecycle_state) + '</dd>'
-            + '<dt>Dry run</dt><dd>' + (bot.dry_run ? 'true' : 'false') + '</dd>'
-          + '</dl>';
+      var primaryStats;
+      if (bot.strategy_type === "momentum") {
+        primaryStats = bot.active_cycle
+          ? '<dl>'
+              + '<dt>Avg entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Trailing stop</dt><dd>' + esc(bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price) + '</dd>'
+              + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price) + '</dd>'
+            + '</dl>'
+          : '<dl>'
+              + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
+              + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
+              + '<dt>Timeframe</dt><dd>' + esc(bot.timeframe) + '</dd>'
+              + '<dt>Dry run</dt><dd>' + (bot.dry_run ? 'true' : 'false') + '</dd>'
+            + '</dl>';
+      } else {
+        primaryStats = bot.active_cycle
+          ? '<dl>'
+              + '<dt>Avg entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
+              + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
+            + '</dl>'
+          : '<dl>'
+              + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
+              + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
+              + '<dt>State</dt><dd>' + esc(bot.lifecycle_state) + '</dd>'
+              + '<dt>Dry run</dt><dd>' + (bot.dry_run ? 'true' : 'false') + '</dd>'
+            + '</dl>';
+      }
       var secondaryStats = '<dl>'
         + '<dt>Leverage</dt><dd>' + esc(bot.initial_leverage) + '</dd>'
         + '<dt>Poll</dt><dd>' + esc(bot.poll_seconds) + 's</dd>'
@@ -705,20 +724,39 @@ HTML_PAGE = """<!doctype html>
       if (selectedView === "horizontal") {
         return renderHorizontalBot(bot, statusBadges);
       }
-      var activeCycle = bot.active_cycle
-        ? '<dl>'
-            + '<dt>Average entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-            + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
-            + '<dt>Safety orders</dt><dd>' + esc(bot.active_cycle.completed_safety_orders) + '</dd>'
-            + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
-            + '<dt>Stop loss</dt><dd>' + esc(bot.thresholds.stop_loss_price) + '</dd>'
-            + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
-          + '</dl>'
-        : '<dl>'
-            + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
-            + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
-            + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
-          + '</dl>';
+      var activeCycle;
+      if (bot.strategy_type === "momentum") {
+        activeCycle = bot.active_cycle
+          ? '<dl>'
+              + '<dt>Average entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Highest</dt><dd>' + esc(bot.active_cycle.highest_price_since_entry) + '</dd>'
+              + '<dt>Initial stop</dt><dd>' + esc(bot.thresholds.initial_stop_price) + '</dd>'
+              + '<dt>Trailing stop</dt><dd>' + esc(bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price) + '</dd>'
+              + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price) + '</dd>'
+            + '</dl>'
+          : '<dl>'
+              + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
+              + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
+              + '<dt>Timeframe</dt><dd>' + esc(bot.timeframe) + '</dd>'
+              + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
+            + '</dl>';
+      } else {
+        activeCycle = bot.active_cycle
+          ? '<dl>'
+              + '<dt>Average entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Safety orders</dt><dd>' + esc(bot.active_cycle.completed_safety_orders) + '</dd>'
+              + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
+              + '<dt>Stop loss</dt><dd>' + esc(bot.thresholds.stop_loss_price) + '</dd>'
+              + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
+            + '</dl>'
+          : '<dl>'
+              + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
+              + '<dt>Max cycles</dt><dd>' + esc(bot.max_cycles) + '</dd>'
+              + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
+            + '</dl>';
+      }
       var closedCycle = bot.last_closed_cycle
         ? '<div class="section"><h2>Last Closed</h2><dl>'
             + '<dt>Reason</dt><dd>' + esc(bot.last_closed_cycle.exit_reason) + '</dd>'
@@ -748,7 +786,7 @@ HTML_PAGE = """<!doctype html>
         + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
         + '<dt>Poll seconds</dt><dd>' + esc(bot.poll_seconds) + '</dd>'
         + '</dl>'
-        + '<div class="section"><h2>' + (bot.active_cycle ? 'Active Cycle' : 'Idle State') + '</h2>' + activeCycle + '</div>'
+        + '<div class="section"><h2>' + (bot.active_cycle ? (bot.strategy_type === "momentum" ? 'Active Position' : 'Active Cycle') : 'Idle State') + '</h2>' + activeCycle + '</div>'
         + '</div>'
         + '<div class="card-secondary">'
         + closedCycle
@@ -794,6 +832,58 @@ HTML_PAGE = """<!doctype html>
         })
         .then(function(bot) {
           if (!bot) return;
+          var strategyRows = bot.strategy_type === "momentum"
+            ? [
+                field("Quote amount", bot.initial_quote_amount),
+                field("Timeframe", bot.timeframe),
+                field("EMA fast", bot.ema_fast_period),
+                field("EMA slow", bot.ema_slow_period),
+                field("Breakout lookback", bot.breakout_lookback),
+                field("Min ADX", bot.min_adx),
+                field("Min ATR %", bot.min_atr_percent),
+                field("TP %", bot.take_profit_percent)
+              ]
+            : [
+                field("Initial quote", bot.initial_quote_amount),
+                field("Safety quote", bot.safety_order_quote_amount),
+                field("Max safety", bot.max_safety_orders),
+                field("Deviation %", bot.price_deviation_percent),
+                field("TP %", bot.take_profit_percent),
+                field("SL %", bot.stop_loss_percent)
+              ];
+          var strategyStatusRows = [];
+          if (bot.strategy_type === "momentum" && bot.strategy_status) {
+            if (bot.strategy_status.mode === "entry") {
+              strategyStatusRows = [
+                field("Entry decision", bot.strategy_status.entry_decision),
+                field("Entry reason", bot.strategy_status.entry_reason),
+                field("Latest close", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.latest_close),
+                field("Breakout level", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.breakout_level),
+                field("EMA fast", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.ema_fast),
+                field("EMA slow", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.ema_slow),
+                field("ADX", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.adx),
+                field("ATR", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr),
+                field("ATR %", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr_percent),
+                field("Initial stop", bot.strategy_status.initial_stop_price),
+                field("Trailing stop", bot.strategy_status.trailing_stop_price)
+              ];
+            } else if (bot.strategy_status.mode === "position") {
+              strategyStatusRows = [
+                field("Exit decision", bot.strategy_status.exit_decision),
+                field("Exit reason", bot.strategy_status.exit_reason),
+                field("Latest close", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.latest_close),
+                field("Breakout level", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.breakout_level),
+                field("EMA fast", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.ema_fast),
+                field("EMA slow", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.ema_slow),
+                field("ADX", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.adx),
+                field("ATR", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr),
+                field("ATR %", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr_percent),
+                field("Stop price", bot.strategy_status.stop_price),
+                field("Trailing stop", bot.strategy_status.trailing_stop_price),
+                field("Highest", bot.strategy_status.highest_price_since_entry)
+              ];
+            }
+          }
           var sections = [
             renderDrawerSection("Container", [
               field("Image", bot.image),
@@ -802,14 +892,7 @@ HTML_PAGE = """<!doctype html>
               field("Dry run", bot.dry_run ? "true" : "false"),
               field("Order type", bot.order_type)
             ]),
-            renderDrawerSection("Strategy", [
-              field("Initial quote", bot.initial_quote_amount),
-              field("Safety quote", bot.safety_order_quote_amount),
-              field("Max safety", bot.max_safety_orders),
-              field("Deviation %", bot.price_deviation_percent),
-              field("TP %", bot.take_profit_percent),
-              field("SL %", bot.stop_loss_percent)
-            ]),
+            renderDrawerSection("Strategy", strategyRows),
             renderDrawerSection("Runtime", [
               field("Leverage", bot.initial_leverage),
               field("Margin type", bot.margin_type),
@@ -822,24 +905,43 @@ HTML_PAGE = """<!doctype html>
               field("Telegram", bot.telegram_enabled ? "enabled" : "disabled")
             ])
           ];
+          if (strategyStatusRows.length) {
+            sections.push(renderDrawerSection("Signals", strategyStatusRows));
+          }
           document.getElementById("drawer-title").textContent = bot.symbol;
           document.getElementById("drawer-subtitle").textContent = bot.container_name + " • " + bot.environment + " • " + bot.container_state + " • " + bot.lifecycle_state;
           if (bot.active_cycle) {
-            sections.push(renderDrawerSection("Active cycle", [
-              field("Started at", formatDateTime(bot.active_cycle.started_at)),
-              field("Side", bot.active_cycle.side),
-              field("Average entry", bot.active_cycle.average_entry_price),
-              field("Quantity", bot.active_cycle.total_quantity),
-              field("Completed safety", bot.active_cycle.completed_safety_orders),
-              field("Last order id", bot.active_cycle.last_order_id),
-              field("Last client id", bot.active_cycle.last_client_order_id),
-              field("Take profit", bot.thresholds.take_profit_price),
-              field("Stop loss", bot.thresholds.stop_loss_price),
-              field("Next trigger", bot.thresholds.next_safety_trigger_price)
-            ]));
+            sections.push(renderDrawerSection(bot.strategy_type === "momentum" ? "Active position" : "Active cycle", bot.strategy_type === "momentum"
+              ? [
+                  field("Started at", formatDateTime(bot.active_cycle.started_at)),
+                  field("Side", bot.active_cycle.side),
+                  field("Average entry", bot.active_cycle.average_entry_price),
+                  field("Quantity", bot.active_cycle.total_quantity),
+                  field("Highest", bot.active_cycle.highest_price_since_entry),
+                  field("Initial stop", bot.thresholds.initial_stop_price),
+                  field("Trailing stop", bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price),
+                  field("Take profit", bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price),
+                  field("Breakout level", bot.active_cycle.breakout_level),
+                  field("Timeframe", bot.active_cycle.timeframe),
+                  field("Last order id", bot.active_cycle.last_order_id),
+                  field("Last client id", bot.active_cycle.last_client_order_id)
+                ]
+              : [
+                  field("Started at", formatDateTime(bot.active_cycle.started_at)),
+                  field("Side", bot.active_cycle.side),
+                  field("Average entry", bot.active_cycle.average_entry_price),
+                  field("Quantity", bot.active_cycle.total_quantity),
+                  field("Completed safety", bot.active_cycle.completed_safety_orders),
+                  field("Last order id", bot.active_cycle.last_order_id),
+                  field("Last client id", bot.active_cycle.last_client_order_id),
+                  field("Take profit", bot.thresholds.take_profit_price),
+                  field("Stop loss", bot.thresholds.stop_loss_price),
+                  field("Next trigger", bot.thresholds.next_safety_trigger_price)
+                ]
+            ));
           }
           if (bot.last_closed_cycle) {
-            sections.push(renderDrawerSection("Last closed cycle", [
+            sections.push(renderDrawerSection(bot.strategy_type === "momentum" ? "Last closed position" : "Last closed cycle", [
               field("Closed at", formatDateTime(bot.last_closed_cycle.closed_at)),
               field("Reason", bot.last_closed_cycle.exit_reason),
               field("Exit price", bot.last_closed_cycle.exit_price),
@@ -1186,9 +1288,126 @@ def _serialize_cycle(cycle: Any) -> dict[str, str | int | None]:
     }
 
 
+def _serialize_momentum_position(position: Any) -> dict[str, str | None]:
+    return {
+        "started_at": position.started_at,
+        "side": position.side,
+        "average_entry_price": str(position.average_entry_price),
+        "total_quantity": str(position.total_quantity),
+        "completed_safety_orders": None,
+        "leverage": _to_text(position.leverage),
+        "margin_type": position.margin_type,
+        "last_order_id": position.last_order_id,
+        "last_client_order_id": position.last_client_order_id,
+        "highest_price_since_entry": _to_text(position.highest_price_since_entry),
+        "initial_stop_price": _to_text(position.initial_stop_price),
+        "trailing_stop_price": _to_text(position.trailing_stop_price),
+        "breakout_level": _to_text(position.breakout_level),
+        "timeframe": position.timeframe,
+    }
+
+
+def _momentum_stop_price(position: Any) -> str | None:
+    if position is None:
+        return None
+    return _to_text(position.trailing_stop_price) or _to_text(position.initial_stop_price)
+
+
+def _empty_thresholds() -> dict[str, str | None]:
+    return {
+        "take_profit_price": None,
+        "stop_loss_price": None,
+        "next_safety_trigger_price": None,
+        "initial_stop_price": None,
+        "trailing_stop_price": None,
+        "fixed_take_profit_price": None,
+    }
+
+
+def _normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
+    strategy_type = status_payload.get("strategy_type", "dca")
+    thresholds = dict(_empty_thresholds())
+    thresholds.update(status_payload.get("thresholds", {}))
+    runtime_status = status_payload.get("runtime_status", {})
+    if strategy_type == "momentum":
+        thresholds["take_profit_price"] = (
+            thresholds.get("take_profit_price") or thresholds.get("fixed_take_profit_price")
+        )
+        thresholds["stop_loss_price"] = (
+            thresholds.get("stop_loss_price")
+            or thresholds.get("trailing_stop_price")
+            or thresholds.get("initial_stop_price")
+        )
+        return {
+            "strategy_type": "momentum",
+            "state_file": status_payload["state_file"],
+            "symbol": status_payload["symbol"],
+            "environment": status_payload["environment"],
+            "order_type": status_payload["order_type"],
+            "dry_run": status_payload["dry_run"],
+            "initial_leverage": status_payload["initial_leverage"],
+            "margin_type": status_payload["margin_type"],
+            "poll_seconds": status_payload["poll_seconds"],
+            "bot_api_port": status_payload["bot_api_port"],
+            "initial_quote_amount": status_payload.get("quote_amount"),
+            "safety_order_quote_amount": None,
+            "max_safety_orders": None,
+            "price_deviation_percent": None,
+            "take_profit_percent": status_payload.get("take_profit_percent"),
+            "stop_loss_percent": None,
+            "safety_order_step_scale": None,
+            "safety_order_volume_scale": None,
+            "telegram_enabled": status_payload["telegram_enabled"],
+            "completed_cycles": status_payload["completed_cycles"],
+            "max_cycles": status_payload["max_cycles"],
+            "active_cycle": status_payload.get("active_position"),
+            "thresholds": thresholds,
+            "last_closed_cycle": status_payload.get("last_closed_position"),
+            "timeframe": status_payload.get("timeframe"),
+            "ema_fast_period": status_payload.get("ema_fast_period"),
+            "ema_slow_period": status_payload.get("ema_slow_period"),
+            "breakout_lookback": status_payload.get("breakout_lookback"),
+            "adx_period": status_payload.get("adx_period"),
+            "min_adx": status_payload.get("min_adx"),
+            "atr_period": status_payload.get("atr_period"),
+            "min_atr_percent": status_payload.get("min_atr_percent"),
+            "stop_atr_multiple": status_payload.get("stop_atr_multiple"),
+            "trailing_atr_multiple": status_payload.get("trailing_atr_multiple"),
+            "use_trend_failure_exit": status_payload.get("use_trend_failure_exit"),
+            "strategy_status": runtime_status.get("strategy_status"),
+        }
+    return {
+        "strategy_type": "dca",
+        "state_file": status_payload["state_file"],
+        "symbol": status_payload["symbol"],
+        "environment": status_payload["environment"],
+        "order_type": status_payload["order_type"],
+        "dry_run": status_payload["dry_run"],
+        "initial_leverage": status_payload["initial_leverage"],
+        "margin_type": status_payload["margin_type"],
+        "poll_seconds": status_payload["poll_seconds"],
+        "bot_api_port": status_payload["bot_api_port"],
+        "initial_quote_amount": status_payload["initial_quote_amount"],
+        "safety_order_quote_amount": status_payload["safety_order_quote_amount"],
+        "max_safety_orders": status_payload["max_safety_orders"],
+        "price_deviation_percent": status_payload["price_deviation_percent"],
+        "take_profit_percent": status_payload["take_profit_percent"],
+        "stop_loss_percent": status_payload["stop_loss_percent"],
+        "safety_order_step_scale": status_payload["safety_order_step_scale"],
+        "safety_order_volume_scale": status_payload["safety_order_volume_scale"],
+        "telegram_enabled": status_payload["telegram_enabled"],
+        "completed_cycles": status_payload["completed_cycles"],
+        "max_cycles": status_payload["max_cycles"],
+        "active_cycle": status_payload["active_cycle"],
+        "thresholds": thresholds,
+        "last_closed_cycle": status_payload["last_closed_cycle"],
+        "strategy_status": runtime_status.get("strategy_status"),
+    }
+
+
 def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
     LOGGER.info("Summarizing container=%s config=%s", container.name, container.config_source)
-    state = BotState()
+    state: BotState | MomentumBotState = BotState()
     config: AppConfig | None = None
     config_file = container.config_source
     state_file: Path | None = None
@@ -1204,22 +1423,42 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
                     config_path="/app/config.toml",
                     resolve_state_paths=False,
                 )
-            state_file = config.dca.state_file
-            if state_file.exists():
-                state = load_state(state_file)
+            if config.strategy_type == "momentum":
+                settings = config.momentum
+                if settings is None:
+                    raise ValueError("Momentum config is missing [momentum] settings")
+                state_file = settings.state_file
+                if state_file.exists():
+                    state = load_momentum_state(state_file)
+                else:
+                    try:
+                        state = load_momentum_state_text(
+                            _docker_api_read_file(container.id, str(state_file)).decode("utf-8")
+                        )
+                    except (FileNotFoundError, OSError, tarfile.TarError):
+                        state = MomentumBotState()
+                symbol = settings.symbol
+                active_runtime = state.active_position is not None
             else:
-                try:
-                    state = load_state_text(
-                        _docker_api_read_file(container.id, str(state_file)).decode("utf-8")
-                    )
-                except (FileNotFoundError, OSError, tarfile.TarError):
-                    state = BotState()
+                state_file = config.dca.state_file
+                if state_file.exists():
+                    state = load_state(state_file)
+                else:
+                    try:
+                        state = load_state_text(
+                            _docker_api_read_file(container.id, str(state_file)).decode("utf-8")
+                        )
+                    except (FileNotFoundError, OSError, tarfile.TarError):
+                        state = BotState()
+                symbol = config.dca.symbol
+                active_runtime = state.active_cycle is not None
             LOGGER.info(
-                "Loaded config/state for container=%s symbol=%s state_file=%s active_cycle=%s completed_cycles=%s",
+                "Loaded config/state for container=%s strategy=%s symbol=%s state_file=%s active_runtime=%s completed_cycles=%s",
                 container.name,
-                config.dca.symbol,
+                config.strategy_type,
+                symbol,
                 state_file,
-                state.active_cycle is not None,
+                active_runtime,
                 state.completed_cycles,
             )
         except Exception as exc:  # pragma: no cover - defensive serialization path
@@ -1232,6 +1471,7 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
     )
     if status_payload is not None:
         LOGGER.info("Loaded bot status via bot API for container=%s", container.name)
+        normalized = _normalize_status_payload(status_payload)
         return {
             "container_name": container.name,
             "container_id": container.id,
@@ -1239,29 +1479,7 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             "lifecycle_state": status_payload["lifecycle_state"],
             "image": container.image,
             "config_file": str(config_file) if config_file is not None else "/app/config.toml",
-            "state_file": status_payload["state_file"],
-            "symbol": status_payload["symbol"],
-            "environment": status_payload["environment"],
-            "order_type": status_payload["order_type"],
-            "dry_run": status_payload["dry_run"],
-            "initial_leverage": status_payload["initial_leverage"],
-            "margin_type": status_payload["margin_type"],
-            "poll_seconds": status_payload["poll_seconds"],
-            "bot_api_port": status_payload["bot_api_port"],
-            "initial_quote_amount": status_payload["initial_quote_amount"],
-            "safety_order_quote_amount": status_payload["safety_order_quote_amount"],
-            "max_safety_orders": status_payload["max_safety_orders"],
-            "price_deviation_percent": status_payload["price_deviation_percent"],
-            "take_profit_percent": status_payload["take_profit_percent"],
-            "stop_loss_percent": status_payload["stop_loss_percent"],
-            "safety_order_step_scale": status_payload["safety_order_step_scale"],
-            "safety_order_volume_scale": status_payload["safety_order_volume_scale"],
-            "telegram_enabled": status_payload["telegram_enabled"],
-            "completed_cycles": status_payload["completed_cycles"],
-            "max_cycles": status_payload["max_cycles"],
-            "active_cycle": status_payload["active_cycle"],
-            "thresholds": status_payload["thresholds"],
-            "last_closed_cycle": status_payload["last_closed_cycle"],
+            **normalized,
             "risk_reduce_only": status_payload["runtime_status"].get("risk_reduce_only", False),
             "risk_reduce_only_reason": status_payload["runtime_status"].get(
                 "risk_reduce_only_reason"
@@ -1286,18 +1504,118 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
             "margin_type": None,
             "poll_seconds": None,
             "bot_api_port": None,
+            "strategy_type": "unknown",
+            "strategy_status": None,
             "completed_cycles": 0,
             "max_cycles": None,
             "active_cycle": None,
-            "thresholds": {
-                "take_profit_price": None,
-                "stop_loss_price": None,
-                "next_safety_trigger_price": None,
-            },
+            "thresholds": _empty_thresholds(),
             "last_closed_cycle": None,
             "risk_reduce_only": False,
             "risk_reduce_only_reason": None,
             "recent_error": load_error or recent_error,
+            "last_log_line": last_log_line,
+        }
+    if config.strategy_type == "momentum":
+        settings = config.momentum
+        if settings is None:
+            raise ValueError("Momentum config is missing [momentum] settings")
+        active_position = state.active_position
+        lifecycle_state = "idle"
+        if active_position is not None:
+            lifecycle_state = "active"
+        elif settings.max_cycles is not None and state.completed_cycles >= settings.max_cycles:
+            lifecycle_state = "inactive-max-cycles"
+        elif not settings.state_file.exists():
+            lifecycle_state = "missing-state"
+        LOGGER.info(
+            "Container=%s lifecycle_state=%s active_position=%s",
+            container.name,
+            lifecycle_state,
+            active_position is not None,
+        )
+        return {
+            "container_name": container.name,
+            "container_id": container.id,
+            "container_state": _container_state(container.status),
+            "lifecycle_state": lifecycle_state,
+            "image": container.image,
+            "config_file": str(config_file),
+            "state_file": str(settings.state_file),
+            "symbol": settings.symbol,
+            "environment": config.credentials.environment,
+            "strategy_type": "momentum",
+            "order_type": settings.order_type,
+            "dry_run": config.runtime.dry_run,
+            "initial_leverage": _to_text(settings.initial_leverage),
+            "margin_type": settings.margin_type,
+            "poll_seconds": config.runtime.poll_seconds,
+            "bot_api_port": config.runtime.bot_api_port,
+            "initial_quote_amount": str(settings.quote_amount),
+            "safety_order_quote_amount": None,
+            "max_safety_orders": None,
+            "price_deviation_percent": None,
+            "take_profit_percent": _to_text(settings.take_profit_percent),
+            "stop_loss_percent": None,
+            "safety_order_step_scale": None,
+            "safety_order_volume_scale": None,
+            "timeframe": settings.timeframe,
+            "ema_fast_period": settings.ema_fast_period,
+            "ema_slow_period": settings.ema_slow_period,
+            "breakout_lookback": settings.breakout_lookback,
+            "adx_period": settings.adx_period,
+            "min_adx": str(settings.min_adx),
+            "atr_period": settings.atr_period,
+            "min_atr_percent": str(settings.min_atr_percent),
+            "stop_atr_multiple": str(settings.stop_atr_multiple),
+            "trailing_atr_multiple": str(settings.trailing_atr_multiple),
+            "use_trend_failure_exit": settings.use_trend_failure_exit,
+            "strategy_status": None,
+            "telegram_enabled": config.telegram.enabled,
+            "completed_cycles": state.completed_cycles,
+            "max_cycles": settings.max_cycles,
+            "active_cycle": (
+                _serialize_momentum_position(active_position) if active_position is not None else None
+            ),
+            "thresholds": {
+                **_empty_thresholds(),
+                "take_profit_price": (
+                    str(fixed_take_profit_price(active_position, settings))
+                    if active_position is not None
+                    and fixed_take_profit_price(active_position, settings) is not None
+                    else None
+                ),
+                "stop_loss_price": _momentum_stop_price(active_position),
+                "initial_stop_price": (
+                    _to_text(active_position.initial_stop_price)
+                    if active_position is not None
+                    else None
+                ),
+                "trailing_stop_price": (
+                    _to_text(active_position.trailing_stop_price)
+                    if active_position is not None
+                    else None
+                ),
+                "fixed_take_profit_price": (
+                    str(fixed_take_profit_price(active_position, settings))
+                    if active_position is not None
+                    and fixed_take_profit_price(active_position, settings) is not None
+                    else None
+                ),
+            },
+            "last_closed_cycle": (
+                {
+                    "closed_at": state.last_closed_position.closed_at,
+                    "exit_reason": state.last_closed_position.exit_reason,
+                    "exit_price": str(state.last_closed_position.exit_price),
+                    "realized_pnl_estimate": str(state.last_closed_position.realized_pnl_estimate),
+                }
+                if state.last_closed_position is not None
+                else None
+            ),
+            "risk_reduce_only": False,
+            "risk_reduce_only_reason": None,
+            "recent_error": recent_error,
             "last_log_line": last_log_line,
         }
     active_cycle = state.active_cycle
@@ -1324,6 +1642,8 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
         "state_file": str(config.dca.state_file),
         "symbol": config.dca.symbol,
         "environment": config.credentials.environment,
+        "strategy_type": "dca",
+        "strategy_status": None,
         "order_type": config.dca.order_type,
         "dry_run": config.runtime.dry_run,
         "initial_leverage": _to_text(config.dca.initial_leverage),
@@ -1343,6 +1663,7 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
         "max_cycles": config.dca.max_cycles,
         "active_cycle": _serialize_cycle(active_cycle) if active_cycle is not None else None,
         "thresholds": {
+            **_empty_thresholds(),
             "take_profit_price": (
                 str(take_profit_price(active_cycle, config.dca))
                 if active_cycle is not None

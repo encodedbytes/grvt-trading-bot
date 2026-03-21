@@ -30,9 +30,11 @@ Before making changes or running the bot again, check:
 - Take profit is price-based, not ROE-based.
 - On startup, the bot first attempts full active-cycle reconstruction from exchange fills, then falls back to position-level recovery if reconstruction is not safe.
 - The momentum bot now has a separate runtime, state model, recovery flow, and CLI diagnostics (`status`, `thresholds`, `recovery-status`).
+- Momentum `status` now prints flat-state entry diagnostics too, including `entry_decision`, `entry_reason`, `breakout_level`, `ema_fast`, `ema_slow`, `adx`, and `atr_percent`.
 - Transient GRVT private-auth failures are retried; if recovery fails transiently and local active state exists, the bot keeps local state for that iteration.
 - Private GRVT POST calls refresh and synchronize the SDK session cookie, and retry once on unauthenticated `401` responses or payloads.
 - Each bot must use a unique `state_file`.
+- Optional config values should be omitted entirely when unused; TOML `null` is invalid and the loader now raises a clearer operator-facing error for that case.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally.
 - The dashboard prefers the bot-local API for config/state details, reads each bot's configured API port from its config, and falls back to Docker-based inspection when the API is unreachable.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.

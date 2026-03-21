@@ -329,3 +329,45 @@ def test_momentum_recovery_status_command_prints_recovery_decision(monkeypatch, 
 
     assert "decision=no-op" in output
     assert "local_active_position=false" in output
+
+
+def test_momentum_status_command_prints_entry_diagnostics_when_flat(monkeypatch, capsys) -> None:
+    config = momentum_config()
+
+    monkeypatch.setattr(cli, "load_config", lambda path: config)
+    monkeypatch.setattr(cli, "build_exchange", lambda config, logger: DummyExchange())
+    monkeypatch.setattr(cli, "load_momentum_state", lambda path: MomentumBotState())
+    monkeypatch.setattr(
+        cli,
+        "build_parser",
+        lambda: type(
+            "Parser",
+            (),
+            {
+                "parse_args": lambda self: type(
+                    "Args",
+                    (),
+                    {
+                        "config": "config.toml",
+                        "once": False,
+                        "instrument": None,
+                        "position_config": False,
+                        "status": True,
+                        "thresholds": False,
+                        "recovery_status": False,
+                        "notify_test": False,
+                    },
+                )()
+            },
+        )(),
+    )
+
+    cli.main()
+    output = capsys.readouterr().out
+
+    assert "active_position=false" in output
+    assert "entry_decision=enter" in output
+    assert "entry_reason=enter" in output
+    assert "latest_close=" in output
+    assert "breakout_level=" in output
+    assert "adx=" in output

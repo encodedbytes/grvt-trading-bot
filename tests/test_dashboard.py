@@ -6,6 +6,7 @@ import subprocess
 
 from gravity_dca import dashboard
 from gravity_dca.config import load_config_text
+from gravity_dca.momentum_state import MomentumBotState, save_momentum_state
 from gravity_dca.state import BotState
 import pytest
 
@@ -86,6 +87,82 @@ def test_summarize_bot_container_with_active_cycle(tmp_path, monkeypatch) -> Non
     assert summary["active_cycle"]["completed_safety_orders"] == 1
     assert summary["thresholds"]["take_profit_price"] is not None
     assert summary["bot_api_port"] == 8787
+
+
+def test_summarize_bot_container_with_momentum_state(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "config.momentum.eth.toml"
+    state_path = tmp_path / "state" / ".gravity-momentum-eth.json"
+    config_path.write_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+quote_amount = "150"
+timeframe = "5m"
+ema_fast_period = 12
+ema_slow_period = 26
+breakout_lookback = 10
+adx_period = 14
+min_adx = "18"
+atr_period = 14
+min_atr_percent = "0.25"
+stop_atr_multiple = "1.3"
+trailing_atr_multiple = "2.0"
+order_type = "market"
+max_cycles = 1
+state_file = "/state/.gravity-momentum-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+bot_api_port = 8788
+"""
+    )
+    state = MomentumBotState()
+    state.open_position(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        when=dashboard.datetime.now(tz=dashboard.UTC),
+        quantity=Decimal("0.25"),
+        price=Decimal("2150"),
+        order_id="0x99",
+        client_order_id="mom-1",
+        leverage=Decimal("3"),
+        margin_type="CROSS",
+        highest_price_since_entry=Decimal("2165"),
+        initial_stop_price=Decimal("2138"),
+        trailing_stop_price=Decimal("2147"),
+        breakout_level=Decimal("2149"),
+        timeframe="5m",
+    )
+    save_momentum_state(state_path, state)
+
+    monkeypatch.setattr(dashboard, "_load_recent_log_info", lambda name: (None, "ok"))
+    monkeypatch.setattr(dashboard, "_fetch_bot_status_from_api", lambda container, port: None)
+    container = dashboard.DockerContainer(
+        id="mom123",
+        name="grvt-momentum-eth",
+        image="gravity-dca-bot:local",
+        status="Up 2 minutes",
+        config_source=config_path,
+        state_source=tmp_path / "state",
+        network_ips=[],
+    )
+
+    summary = dashboard.summarize_bot_container(container)
+
+    assert summary["strategy_type"] == "momentum"
+    assert summary["symbol"] == "ETH_USDT_Perp"
+    assert summary["active_cycle"]["highest_price_since_entry"] == "2165"
+    assert summary["thresholds"]["trailing_stop_price"] == "2147"
+    assert summary["thresholds"]["stop_loss_price"] == "2147"
+    assert summary["bot_api_port"] == 8788
 
 
 def test_collect_dashboard_payload_counts_inactive_max_cycles(monkeypatch) -> None:
@@ -334,6 +411,132 @@ bot_api_port = 8787
     assert summary["risk_reduce_only_reason"] == "Only risk-reducing orders are permitted"
 
 
+def test_summarize_bot_container_normalizes_momentum_bot_api(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.momentum.eth.toml"
+    config_path.write_text(
+        """
+[credentials]
+api_key = "key"
+private_key = "priv"
+trading_account_id = "acct"
+environment = "prod"
+
+[momentum]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+quote_amount = "150"
+timeframe = "5m"
+ema_fast_period = 12
+ema_slow_period = 26
+breakout_lookback = 10
+adx_period = 14
+min_adx = "18"
+atr_period = 14
+min_atr_percent = "0.25"
+stop_atr_multiple = "1.3"
+trailing_atr_multiple = "2.0"
+state_file = "/state/momentum.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+bot_api_port = 8788
+"""
+    )
+    monkeypatch.setattr(dashboard, "_load_recent_log_info", lambda name: ("api-error", "log line"))
+    monkeypatch.setattr(
+        dashboard,
+        "_fetch_bot_status_from_api",
+        lambda container, port: {
+            "symbol": "ETH_USDT_Perp",
+            "environment": "prod",
+            "strategy_type": "momentum",
+            "order_type": "market",
+            "dry_run": False,
+            "state_file": "/state/momentum.json",
+            "lifecycle_state": "active",
+            "initial_leverage": "3",
+            "margin_type": "CROSS",
+            "poll_seconds": 30,
+            "bot_api_port": 8788,
+            "quote_amount": "150",
+            "timeframe": "5m",
+            "ema_fast_period": 12,
+            "ema_slow_period": 26,
+            "breakout_lookback": 10,
+            "adx_period": 14,
+            "min_adx": "18",
+            "atr_period": 14,
+            "min_atr_percent": "0.25",
+            "stop_atr_multiple": "1.3",
+            "trailing_atr_multiple": "2.0",
+            "use_trend_failure_exit": True,
+            "take_profit_percent": None,
+            "telegram_enabled": True,
+            "completed_cycles": 0,
+            "max_cycles": 1,
+            "active_position": {
+                "side": "buy",
+                "started_at": "2026-03-20T00:00:00+00:00",
+                "average_entry_price": "2150",
+                "total_quantity": "0.25",
+                "highest_price_since_entry": "2165",
+                "initial_stop_price": "2138",
+                "trailing_stop_price": "2147",
+                "breakout_level": "2149",
+                "timeframe": "5m",
+                "last_order_id": "0x99",
+                "last_client_order_id": "mom-1",
+            },
+            "thresholds": {
+                "initial_stop_price": "2138",
+                "trailing_stop_price": "2147",
+                "fixed_take_profit_price": None,
+            },
+            "last_closed_position": None,
+            "runtime_status": {
+                "last_iteration_error": None,
+                "risk_reduce_only": False,
+                "risk_reduce_only_reason": None,
+                "strategy_status": {
+                    "strategy_type": "momentum",
+                    "mode": "entry",
+                    "entry_decision": "skip",
+                    "entry_reason": "breakout-not-confirmed",
+                    "indicator_snapshot": {
+                        "latest_close": "2152.74",
+                        "breakout_level": "2159.72",
+                        "ema_fast": "2145.10",
+                        "ema_slow": "2141.32",
+                        "adx": "21.48",
+                        "atr": "7.52",
+                        "atr_percent": "0.34",
+                    },
+                    "initial_stop_price": None,
+                    "trailing_stop_price": None,
+                },
+            },
+        },
+    )
+    container = dashboard.DockerContainer(
+        id="mom123",
+        name="grvt-momentum-eth",
+        image="gravity-dca-bot:local",
+        status="Up 2 minutes",
+        config_source=config_path,
+        state_source=tmp_path / "state",
+        network_ips=["172.18.0.9"],
+    )
+
+    summary = dashboard.summarize_bot_container(container)
+
+    assert summary["strategy_type"] == "momentum"
+    assert summary["active_cycle"]["breakout_level"] == "2149"
+    assert summary["thresholds"]["stop_loss_price"] == "2147"
+    assert summary["initial_quote_amount"] == "150"
+    assert summary["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
+
+
 def test_summarize_bot_container_uses_configured_api_port(monkeypatch, tmp_path) -> None:
     seen = {}
     config_path = tmp_path / "config.eth.toml"
@@ -444,6 +647,12 @@ def test_dashboard_html_surfaces_risk_reduce_only_runtime_state() -> None:
     assert 'badgeClass("risk-reduce-only")' in dashboard.HTML_PAGE
     assert 'field("Risk reduce-only", bot.risk_reduce_only ? "true" : "false")' in dashboard.HTML_PAGE
     assert 'field("Restriction", bot.risk_reduce_only_reason)' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_surfaces_momentum_signal_details() -> None:
+    assert 'renderDrawerSection("Signals", strategyStatusRows)' in dashboard.HTML_PAGE
+    assert 'field("Entry reason", bot.strategy_status.entry_reason)' in dashboard.HTML_PAGE
+    assert 'field("ATR %", bot.strategy_status.indicator_snapshot && bot.strategy_status.indicator_snapshot.atr_percent)' in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_formats_timestamps_with_intl() -> None:

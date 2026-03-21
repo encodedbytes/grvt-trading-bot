@@ -48,7 +48,7 @@ Recommended initial defaults:
 - `stop_atr_multiple = 1.5`
 - `trailing_atr_multiple = 2.0`
 - `use_trend_failure_exit = true`
-- `take_profit_percent = null`
+- omit `take_profit_percent` to disable fixed take profit
 
 ### Position Model
 
@@ -86,7 +86,6 @@ min_atr_percent = "0.4"
 stop_atr_multiple = "1.5"
 trailing_atr_multiple = "2.0"
 use_trend_failure_exit = true
-take_profit_percent = null
 
 state_file = "/state/.gravity-momentum-eth.json"
 ```
@@ -314,6 +313,8 @@ Delivered:
 
 ### Phase 9: Documentation
 
+Status: implemented
+
 Goal:
 - document setup and operation clearly
 
@@ -325,6 +326,12 @@ Tasks:
 
 Completion criteria:
 - docs reflect implemented momentum behavior and limitations
+
+Delivered:
+- updated `README.md` to reflect runnable momentum support and operator workflow
+- updated `AGENTS.md` with momentum runtime, diagnostics, and config error notes
+- corrected momentum examples to avoid invalid TOML `null` usage
+- documented flat-state momentum `status` diagnostics for skipped-entry troubleshooting
 
 ### Phase 10: Live Rollout
 

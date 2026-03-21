@@ -8,7 +8,7 @@ from .bot import DcaBot
 from .momentum_bot import MomentumBot
 from .momentum_recovery import reconcile_momentum_state
 from .momentum_state import load_momentum_state
-from .momentum_strategy import build_indicator_snapshot, fixed_take_profit_price
+from .momentum_strategy import build_indicator_snapshot, evaluate_entry, fixed_take_profit_price
 from .config import load_config
 from .exchange import GrvtExchange, TransientExchangeError
 from .telegram import build_notifier, configured_symbol
@@ -166,6 +166,22 @@ def main() -> None:
             print(f"exchange_position={'true' if exchange_position is not None else 'false'}")
             if state.active_position is None:
                 print("active_position=false")
+                entry_decision = evaluate_entry(candles, config.momentum, state)
+                print(f"entry_decision={'enter' if entry_decision.should_enter else 'skip'}")
+                print(f"entry_reason={entry_decision.reason}")
+                snapshot = entry_decision.indicator_snapshot or indicator_snapshot
+                if snapshot is not None:
+                    print(f"latest_close={snapshot.close_price}")
+                    print(f"breakout_level={snapshot.breakout_level}")
+                    print(f"ema_fast={snapshot.ema_fast}")
+                    print(f"ema_slow={snapshot.ema_slow}")
+                    print(f"adx={snapshot.adx}")
+                    print(f"atr={snapshot.atr}")
+                    print(f"atr_percent={snapshot.atr_percent}")
+                if entry_decision.initial_stop_price is not None:
+                    print(f"initial_stop_price={entry_decision.initial_stop_price}")
+                if entry_decision.trailing_stop_price is not None:
+                    print(f"trailing_stop_price={entry_decision.trailing_stop_price}")
                 print(f"completed_cycles={state.completed_cycles}")
                 if state.last_closed_position is not None:
                     print(f"last_exit_reason={state.last_closed_position.exit_reason}")
