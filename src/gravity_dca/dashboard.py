@@ -135,7 +135,7 @@ def summarize_bot_container(container: DockerContainer) -> dict[str, Any]:
         )
     status_payload = build_status_snapshot(config, state, new_runtime_status())
     normalized = normalize_status_payload(status_payload)
-    active_runtime = normalized["active_cycle"] is not None
+    active_runtime = normalized["active_trade"] is not None
     LOGGER.info(
         "Container=%s lifecycle_state=%s strategy=%s active_runtime=%s",
         container.name,
@@ -169,7 +169,7 @@ def collect_dashboard_payload() -> dict[str, Any]:
     LOGGER.info(
         "Dashboard payload generated bots=%s active=%s inactive_max=%s error=%s",
         len(bots),
-        sum(1 for bot in bots if bot["active_cycle"] is not None),
+        sum(1 for bot in bots if bot["active_trade"] is not None),
         sum(1 for bot in bots if bot["lifecycle_state"] == "inactive-max-cycles"),
         error,
     )
@@ -177,7 +177,7 @@ def collect_dashboard_payload() -> dict[str, Any]:
         "generated_at": datetime.now(tz=UTC).isoformat(),
         "summary": {
             "total_containers": len(bots),
-            "active_cycles": sum(1 for bot in bots if bot["active_cycle"] is not None),
+            "active_cycles": sum(1 for bot in bots if bot["active_trade"] is not None),
             "inactive_max_cycles": sum(
                 1 for bot in bots if bot["lifecycle_state"] == "inactive-max-cycles"
             ),

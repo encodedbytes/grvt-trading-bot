@@ -660,8 +660,14 @@ def test_dashboard_html_formats_timestamps_with_intl() -> None:
     assert 'new Intl.DateTimeFormat(undefined, {' in dashboard.HTML_PAGE
     assert 'function formatDateTime(value) {' in dashboard.HTML_PAGE
     assert "formatDateTime(payload.generated_at)" in dashboard.HTML_PAGE
-    assert 'field("Started at", formatDateTime(bot.active_cycle.started_at))' in dashboard.HTML_PAGE
-    assert 'field("Closed at", formatDateTime(bot.last_closed_cycle.closed_at))' in dashboard.HTML_PAGE
+    assert 'field("Started at", formatDateTime(bot.active_trade.started_at))' in dashboard.HTML_PAGE
+    assert 'field("Closed at", formatDateTime(bot.last_closed_trade.closed_at))' in dashboard.HTML_PAGE
+
+
+def test_dashboard_html_uses_generic_trade_fields() -> None:
+    assert 'bot.active_trade' in dashboard.HTML_PAGE
+    assert 'bot.last_closed_trade' in dashboard.HTML_PAGE
+    assert "bot.active_trade_kind === 'position'" in dashboard.HTML_PAGE
 
 
 def test_dashboard_html_restores_focus_to_trigger_after_close() -> None:

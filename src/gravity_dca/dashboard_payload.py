@@ -20,6 +20,8 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
     thresholds.update(status_payload.get("thresholds", {}))
     runtime_status = status_payload.get("runtime_status", {})
     if strategy_type == "momentum":
+        active_trade = status_payload.get("active_position")
+        last_closed_trade = status_payload.get("last_closed_position")
         thresholds["take_profit_price"] = (
             thresholds.get("take_profit_price") or thresholds.get("fixed_take_profit_price")
         )
@@ -50,9 +52,13 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
             "telegram_enabled": status_payload["telegram_enabled"],
             "completed_cycles": status_payload["completed_cycles"],
             "max_cycles": status_payload["max_cycles"],
-            "active_cycle": status_payload.get("active_position"),
+            "active_trade_kind": "position",
+            "last_closed_trade_kind": "position",
+            "active_trade": active_trade,
+            "active_cycle": active_trade,
             "thresholds": thresholds,
-            "last_closed_cycle": status_payload.get("last_closed_position"),
+            "last_closed_trade": last_closed_trade,
+            "last_closed_cycle": last_closed_trade,
             "timeframe": status_payload.get("timeframe"),
             "ema_fast_period": status_payload.get("ema_fast_period"),
             "ema_slow_period": status_payload.get("ema_slow_period"),
@@ -66,6 +72,8 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
             "use_trend_failure_exit": status_payload.get("use_trend_failure_exit"),
             "strategy_status": runtime_status.get("strategy_status"),
         }
+    active_trade = status_payload["active_cycle"]
+    last_closed_trade = status_payload["last_closed_cycle"]
     return {
         "strategy_type": "dca",
         "state_file": status_payload["state_file"],
@@ -88,9 +96,13 @@ def normalize_status_payload(status_payload: dict[str, Any]) -> dict[str, Any]:
         "telegram_enabled": status_payload["telegram_enabled"],
         "completed_cycles": status_payload["completed_cycles"],
         "max_cycles": status_payload["max_cycles"],
-        "active_cycle": status_payload["active_cycle"],
+        "active_trade_kind": "cycle",
+        "last_closed_trade_kind": "cycle",
+        "active_trade": active_trade,
+        "active_cycle": active_trade,
         "thresholds": thresholds,
-        "last_closed_cycle": status_payload["last_closed_cycle"],
+        "last_closed_trade": last_closed_trade,
+        "last_closed_cycle": last_closed_trade,
         "strategy_status": runtime_status.get("strategy_status"),
     }
 
@@ -153,8 +165,12 @@ def build_error_summary(
         "strategy_status": None,
         "completed_cycles": 0,
         "max_cycles": None,
+        "active_trade_kind": None,
+        "last_closed_trade_kind": None,
+        "active_trade": None,
         "active_cycle": None,
         "thresholds": empty_thresholds(),
+        "last_closed_trade": None,
         "last_closed_cycle": None,
         "risk_reduce_only": False,
         "risk_reduce_only_reason": None,

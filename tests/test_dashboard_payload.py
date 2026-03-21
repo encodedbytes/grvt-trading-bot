@@ -52,6 +52,9 @@ def test_normalize_status_payload_maps_momentum_fields() -> None:
 
     assert normalized["strategy_type"] == "momentum"
     assert normalized["initial_quote_amount"] == "150"
+    assert normalized["active_trade_kind"] == "position"
+    assert normalized["last_closed_trade_kind"] == "position"
+    assert normalized["active_trade"] == {"side": "buy"}
     assert normalized["active_cycle"] == {"side": "buy"}
     assert normalized["thresholds"]["stop_loss_price"] == "2147"
     assert normalized["strategy_status"]["entry_reason"] == "breakout-not-confirmed"
@@ -81,7 +84,15 @@ def test_build_container_summary_attaches_runtime_fields() -> None:
         lifecycle_state="active",
         image="gravity-dca-bot:local",
         config_file="/app/config.toml",
-        normalized_status={"symbol": "BTC_USDT_Perp", "active_cycle": None},
+        normalized_status={
+            "symbol": "BTC_USDT_Perp",
+            "active_trade_kind": "cycle",
+            "last_closed_trade_kind": "cycle",
+            "active_trade": None,
+            "active_cycle": None,
+            "last_closed_trade": None,
+            "last_closed_cycle": None,
+        },
         risk_reduce_only=True,
         risk_reduce_only_reason="Only risk-reducing orders are permitted",
         recent_error="ValueError: boom",
@@ -90,5 +101,6 @@ def test_build_container_summary_attaches_runtime_fields() -> None:
 
     assert summary["container_id"] == "abc123"
     assert summary["symbol"] == "BTC_USDT_Perp"
+    assert summary["active_trade_kind"] == "cycle"
     assert summary["risk_reduce_only"] is True
     assert summary["recent_error"] == "ValueError: boom"

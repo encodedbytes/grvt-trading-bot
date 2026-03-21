@@ -100,7 +100,7 @@ Delivered:
 
 ## Phase 4: Tighten Bot Detail Schema
 
-Status: planned
+Status: implemented
 
 Goal:
 - remove remaining DCA naming leakage from the dashboard UI
@@ -113,6 +113,12 @@ Tasks:
 Completion criteria:
 - no DCA-only naming assumptions leak into momentum rendering paths
 - the payload contract is explicitly documented in code/tests
+
+Delivered:
+- added generic trade-level payload fields such as `active_trade`, `last_closed_trade`, and corresponding `*_kind` markers
+- switched the dashboard template and summary counting to use the generic trade fields instead of DCA-oriented names
+- kept compatibility aliases in the payload layer so the transition stays low-risk
+- added regression coverage for the tightened payload schema and generic trade rendering
 
 ## Phase 5: Operational Hardening
 

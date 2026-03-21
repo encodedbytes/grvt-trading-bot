@@ -635,10 +635,10 @@ HTML_PAGE = """<!doctype html>
     function renderHorizontalBot(bot, statusBadges) {
       var primaryStats;
       if (bot.strategy_type === "momentum") {
-        primaryStats = bot.active_cycle
+        primaryStats = bot.active_trade
           ? '<dl>'
-              + '<dt>Avg entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Avg entry</dt><dd>' + esc(bot.active_trade.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_trade.total_quantity) + '</dd>'
               + '<dt>Trailing stop</dt><dd>' + esc(bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price) + '</dd>'
               + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price) + '</dd>'
             + '</dl>'
@@ -649,10 +649,10 @@ HTML_PAGE = """<!doctype html>
               + '<dt>Dry run</dt><dd>' + (bot.dry_run ? 'true' : 'false') + '</dd>'
             + '</dl>';
       } else {
-        primaryStats = bot.active_cycle
+        primaryStats = bot.active_trade
           ? '<dl>'
-              + '<dt>Avg entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
+              + '<dt>Avg entry</dt><dd>' + esc(bot.active_trade.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_trade.total_quantity) + '</dd>'
               + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
               + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
             + '</dl>'
@@ -677,7 +677,7 @@ HTML_PAGE = """<!doctype html>
         + '</div><div class="badges">' + statusBadges + '</div></div>'
         + '<div class="card-layout">'
         + '<div class="card-primary">'
-        + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>' + (bot.active_cycle ? 'Live Cycle' : 'Runtime') + '</h2>' + primaryStats + '</div>'
+        + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>' + (bot.active_trade ? (bot.active_trade_kind === "position" ? 'Live Position' : 'Live Cycle') : 'Runtime') + '</h2>' + primaryStats + '</div>'
         + '</div>'
         + '<div class="card-secondary">'
         + '<div class="section" style="margin-top:0;padding-top:0;border-top:0"><h2>Ops</h2>' + secondaryStats + '</div>'
@@ -700,11 +700,11 @@ HTML_PAGE = """<!doctype html>
       }
       var activeCycle;
       if (bot.strategy_type === "momentum") {
-        activeCycle = bot.active_cycle
+        activeCycle = bot.active_trade
           ? '<dl>'
-              + '<dt>Average entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
-              + '<dt>Highest</dt><dd>' + esc(bot.active_cycle.highest_price_since_entry) + '</dd>'
+              + '<dt>Average entry</dt><dd>' + esc(bot.active_trade.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_trade.total_quantity) + '</dd>'
+              + '<dt>Highest</dt><dd>' + esc(bot.active_trade.highest_price_since_entry) + '</dd>'
               + '<dt>Initial stop</dt><dd>' + esc(bot.thresholds.initial_stop_price) + '</dd>'
               + '<dt>Trailing stop</dt><dd>' + esc(bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price) + '</dd>'
               + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price) + '</dd>'
@@ -716,11 +716,11 @@ HTML_PAGE = """<!doctype html>
               + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
             + '</dl>';
       } else {
-        activeCycle = bot.active_cycle
+        activeCycle = bot.active_trade
           ? '<dl>'
-              + '<dt>Average entry</dt><dd>' + esc(bot.active_cycle.average_entry_price) + '</dd>'
-              + '<dt>Quantity</dt><dd>' + esc(bot.active_cycle.total_quantity) + '</dd>'
-              + '<dt>Safety orders</dt><dd>' + esc(bot.active_cycle.completed_safety_orders) + '</dd>'
+              + '<dt>Average entry</dt><dd>' + esc(bot.active_trade.average_entry_price) + '</dd>'
+              + '<dt>Quantity</dt><dd>' + esc(bot.active_trade.total_quantity) + '</dd>'
+              + '<dt>Safety orders</dt><dd>' + esc(bot.active_trade.completed_safety_orders) + '</dd>'
               + '<dt>Take profit</dt><dd>' + esc(bot.thresholds.take_profit_price) + '</dd>'
               + '<dt>Stop loss</dt><dd>' + esc(bot.thresholds.stop_loss_price) + '</dd>'
               + '<dt>Next trigger</dt><dd>' + esc(bot.thresholds.next_safety_trigger_price) + '</dd>'
@@ -731,11 +731,11 @@ HTML_PAGE = """<!doctype html>
               + '<dt>State file</dt><dd class="mono">' + esc(bot.state_file) + '</dd>'
             + '</dl>';
       }
-      var closedCycle = bot.last_closed_cycle
+      var closedCycle = bot.last_closed_trade
         ? '<div class="section"><h2>Last Closed</h2><dl>'
-            + '<dt>Reason</dt><dd>' + esc(bot.last_closed_cycle.exit_reason) + '</dd>'
-            + '<dt>Exit price</dt><dd>' + esc(bot.last_closed_cycle.exit_price) + '</dd>'
-            + '<dt>PnL est.</dt><dd>' + esc(bot.last_closed_cycle.realized_pnl_estimate) + '</dd>'
+            + '<dt>Reason</dt><dd>' + esc(bot.last_closed_trade.exit_reason) + '</dd>'
+            + '<dt>Exit price</dt><dd>' + esc(bot.last_closed_trade.exit_price) + '</dd>'
+            + '<dt>PnL est.</dt><dd>' + esc(bot.last_closed_trade.realized_pnl_estimate) + '</dd>'
           + '</dl></div>'
         : "";
       var logSection = (bot.last_log_line || bot.recent_error)
@@ -760,7 +760,7 @@ HTML_PAGE = """<!doctype html>
         + '<dt>Completed cycles</dt><dd>' + esc(bot.completed_cycles) + '</dd>'
         + '<dt>Poll seconds</dt><dd>' + esc(bot.poll_seconds) + '</dd>'
         + '</dl>'
-        + '<div class="section"><h2>' + (bot.active_cycle ? (bot.strategy_type === "momentum" ? 'Active Position' : 'Active Cycle') : 'Idle State') + '</h2>' + activeCycle + '</div>'
+        + '<div class="section"><h2>' + (bot.active_trade ? (bot.strategy_type === "momentum" ? 'Active Position' : 'Active Cycle') : 'Idle State') + '</h2>' + activeCycle + '</div>'
         + '</div>'
         + '<div class="card-secondary">'
         + closedCycle
@@ -884,42 +884,42 @@ HTML_PAGE = """<!doctype html>
           }
           document.getElementById("drawer-title").textContent = bot.symbol;
           document.getElementById("drawer-subtitle").textContent = bot.container_name + " • " + bot.environment + " • " + bot.container_state + " • " + bot.lifecycle_state;
-          if (bot.active_cycle) {
-            sections.push(renderDrawerSection(bot.strategy_type === "momentum" ? "Active position" : "Active cycle", bot.strategy_type === "momentum"
+          if (bot.active_trade) {
+            sections.push(renderDrawerSection(bot.active_trade_kind === 'position' ? "Active position" : "Active cycle", bot.strategy_type === "momentum"
               ? [
-                  field("Started at", formatDateTime(bot.active_cycle.started_at)),
-                  field("Side", bot.active_cycle.side),
-                  field("Average entry", bot.active_cycle.average_entry_price),
-                  field("Quantity", bot.active_cycle.total_quantity),
-                  field("Highest", bot.active_cycle.highest_price_since_entry),
+                  field("Started at", formatDateTime(bot.active_trade.started_at)),
+                  field("Side", bot.active_trade.side),
+                  field("Average entry", bot.active_trade.average_entry_price),
+                  field("Quantity", bot.active_trade.total_quantity),
+                  field("Highest", bot.active_trade.highest_price_since_entry),
                   field("Initial stop", bot.thresholds.initial_stop_price),
                   field("Trailing stop", bot.thresholds.trailing_stop_price || bot.thresholds.stop_loss_price),
                   field("Take profit", bot.thresholds.fixed_take_profit_price || bot.thresholds.take_profit_price),
-                  field("Breakout level", bot.active_cycle.breakout_level),
-                  field("Timeframe", bot.active_cycle.timeframe),
-                  field("Last order id", bot.active_cycle.last_order_id),
-                  field("Last client id", bot.active_cycle.last_client_order_id)
+                  field("Breakout level", bot.active_trade.breakout_level),
+                  field("Timeframe", bot.active_trade.timeframe),
+                  field("Last order id", bot.active_trade.last_order_id),
+                  field("Last client id", bot.active_trade.last_client_order_id)
                 ]
               : [
-                  field("Started at", formatDateTime(bot.active_cycle.started_at)),
-                  field("Side", bot.active_cycle.side),
-                  field("Average entry", bot.active_cycle.average_entry_price),
-                  field("Quantity", bot.active_cycle.total_quantity),
-                  field("Completed safety", bot.active_cycle.completed_safety_orders),
-                  field("Last order id", bot.active_cycle.last_order_id),
-                  field("Last client id", bot.active_cycle.last_client_order_id),
+                  field("Started at", formatDateTime(bot.active_trade.started_at)),
+                  field("Side", bot.active_trade.side),
+                  field("Average entry", bot.active_trade.average_entry_price),
+                  field("Quantity", bot.active_trade.total_quantity),
+                  field("Completed safety", bot.active_trade.completed_safety_orders),
+                  field("Last order id", bot.active_trade.last_order_id),
+                  field("Last client id", bot.active_trade.last_client_order_id),
                   field("Take profit", bot.thresholds.take_profit_price),
                   field("Stop loss", bot.thresholds.stop_loss_price),
                   field("Next trigger", bot.thresholds.next_safety_trigger_price)
                 ]
             ));
           }
-          if (bot.last_closed_cycle) {
-            sections.push(renderDrawerSection(bot.strategy_type === "momentum" ? "Last closed position" : "Last closed cycle", [
-              field("Closed at", formatDateTime(bot.last_closed_cycle.closed_at)),
-              field("Reason", bot.last_closed_cycle.exit_reason),
-              field("Exit price", bot.last_closed_cycle.exit_price),
-              field("PnL est.", bot.last_closed_cycle.realized_pnl_estimate)
+          if (bot.last_closed_trade) {
+            sections.push(renderDrawerSection(bot.last_closed_trade_kind === 'position' ? "Last closed position" : "Last closed cycle", [
+              field("Closed at", formatDateTime(bot.last_closed_trade.closed_at)),
+              field("Reason", bot.last_closed_trade.exit_reason),
+              field("Exit price", bot.last_closed_trade.exit_price),
+              field("PnL est.", bot.last_closed_trade.realized_pnl_estimate)
             ]));
           }
           document.getElementById("drawer-grid").innerHTML = sections.join("");
