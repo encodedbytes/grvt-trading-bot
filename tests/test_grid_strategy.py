@@ -72,6 +72,7 @@ def test_plan_grid_orders_places_closest_idle_buys_below_market() -> None:
         Decimal("1900"),
     ]
     assert decision.desired_sell_orders == []
+    assert decision.cancel_buy_level_indices == []
 
 
 def test_plan_grid_orders_respects_existing_buy_orders_and_inventory_capacity() -> None:
@@ -93,7 +94,8 @@ def test_plan_grid_orders_respects_existing_buy_orders_and_inventory_capacity() 
         market_price=Decimal("2050"),
     )
 
-    assert [order.level_index for order in decision.desired_buy_orders] == [0]
+    assert [order.level_index for order in decision.desired_buy_orders] == []
+    assert decision.cancel_buy_level_indices == []
 
 
 def test_plan_grid_orders_creates_paired_sell_for_filled_inventory() -> None:
@@ -116,6 +118,20 @@ def test_plan_grid_orders_creates_paired_sell_for_filled_inventory() -> None:
     assert decision.desired_sell_orders[0].level_index == 1
     assert decision.desired_sell_orders[0].paired_level_index == 2
     assert decision.desired_sell_orders[0].price == Decimal("2000")
+
+
+def test_plan_grid_orders_marks_stale_buy_orders_for_cancellation() -> None:
+    state = initialized_state()
+    now = datetime(2026, 3, 20, tzinfo=UTC)
+    state.open_buy_order(level_index=3, when=now, order_id="0xbuy", client_order_id="buy-3")
+
+    decision = plan_grid_orders(
+        state=state,
+        settings=config(),
+        market_price=Decimal("2050"),
+    )
+
+    assert decision.cancel_buy_level_indices == [3]
 
 
 def test_paired_sell_price_returns_none_for_top_level() -> None:

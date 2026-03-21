@@ -299,6 +299,17 @@ class GrvtTradingGateway:
         params = {"client_order_id": client_order_id} if client_order_id is not None else {}
         return self._client.fetch_order(id=order_id, params=params)
 
+    def fetch_open_orders(self, *, symbol: str) -> list[dict]:
+        self._auth.ensure_private_auth()
+        response = self._client.fetch_open_orders(symbol=symbol)
+        if isinstance(response, dict):
+            result = response.get("result")
+            if isinstance(result, list):
+                return result
+        if isinstance(response, list):
+            return response
+        return []
+
     def parse_fill_report(self, response: dict) -> FillReport | None:
         result = response.get("result", response)
         if not isinstance(result, dict) or not result:

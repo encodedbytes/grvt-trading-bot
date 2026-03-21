@@ -29,6 +29,7 @@ class GridStrategyDecision:
     snapshot: GridStrategySnapshot
     desired_buy_orders: list[GridDesiredOrder]
     desired_sell_orders: list[GridDesiredOrder]
+    cancel_buy_level_indices: list[int]
 
 
 def build_grid_levels(settings: GridSettings) -> list[Decimal]:
@@ -76,22 +77,35 @@ def plan_grid_orders(
         if level.status in {"filled_inventory", "sell_open"}
     )
 
-    eligible_buy_level_indices = [
+    candidate_buy_level_indices = [
         index
         for index, price in enumerate(levels[:-1])
         if price < market_price
-        and state_levels.get(index, GridLevelState(level_index=index, price=price)).status == "idle"
+        and state_levels.get(index, GridLevelState(level_index=index, price=price)).status in {"idle", "buy_open"}
     ]
-
-    buy_order_slots = max(0, settings.max_active_buy_orders - len(active_buy_level_indices))
     inventory_capacity = max(0, settings.max_inventory_levels - len(inventory_level_indices))
-    buy_capacity = min(buy_order_slots, inventory_capacity)
+    target_buy_capacity = min(settings.max_active_buy_orders, inventory_capacity)
+    target_open_buy_indices = sorted(
+        candidate_buy_level_indices,
+        key=lambda current: levels[current],
+        reverse=True,
+    )[:target_buy_capacity]
+    eligible_buy_level_indices = [
+        index
+        for index in candidate_buy_level_indices
+        if state_levels.get(index, GridLevelState(level_index=index, price=levels[index])).status == "idle"
+    ]
 
     desired_buy_orders = [
         GridDesiredOrder(level_index=index, side="buy", price=levels[index])
-        for index in sorted(eligible_buy_level_indices, key=lambda current: levels[current], reverse=True)[
-            :buy_capacity
-        ]
+        for index in target_open_buy_indices
+        if state_levels.get(index, GridLevelState(level_index=index, price=levels[index])).status == "idle"
+    ]
+
+    cancel_buy_level_indices = [
+        level_index
+        for level_index in active_buy_level_indices
+        if level_index not in target_open_buy_indices
     ]
 
     desired_sell_orders: list[GridDesiredOrder] = []
@@ -121,4 +135,5 @@ def plan_grid_orders(
         snapshot=snapshot,
         desired_buy_orders=desired_buy_orders,
         desired_sell_orders=desired_sell_orders,
+        cancel_buy_level_indices=cancel_buy_level_indices,
     )

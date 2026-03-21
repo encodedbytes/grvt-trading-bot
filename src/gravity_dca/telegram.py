@@ -108,6 +108,10 @@ def configured_symbol(config: AppConfig) -> str:
         if config.momentum is None:
             raise ValueError("Momentum config is required when strategy_type is momentum")
         return config.momentum.symbol
+    if config.strategy_type == "grid":
+        if config.grid is None:
+            raise ValueError("Grid config is required when strategy_type is grid")
+        return config.grid.symbol
     if config.dca is None:
         raise ValueError("DCA config is required when strategy_type is dca")
     return config.dca.symbol
@@ -116,12 +120,16 @@ def configured_symbol(config: AppConfig) -> str:
 def configured_side(config: AppConfig) -> str | None:
     if config.strategy_type == "momentum":
         return config.momentum.side if config.momentum is not None else None
+    if config.strategy_type == "grid":
+        return config.grid.side if config.grid is not None else None
     return config.dca.side if config.dca is not None else None
 
 
 def configured_order_type(config: AppConfig) -> str | None:
     if config.strategy_type == "momentum":
         return config.momentum.order_type if config.momentum is not None else None
+    if config.strategy_type == "grid":
+        return config.grid.order_type if config.grid is not None else None
     return config.dca.order_type if config.dca is not None else None
 
 

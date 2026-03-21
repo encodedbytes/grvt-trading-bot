@@ -308,6 +308,8 @@ Delivered:
 
 ### Phase 5: Bot Orchestration
 
+Status: implemented
+
 Goal:
 - implement the live grid bot loop
 
@@ -319,6 +321,16 @@ Tasks:
 
 Completion criteria:
 - orchestration tests pass with mocked exchange responses
+
+Delivered:
+- added `gravity_dca.grid_bot` as a dedicated grid runtime separate from DCA and momentum
+- added exchange support for listing live open orders
+- implemented reconciliation-first runtime orchestration before planning new orders
+- placed missing resting buy orders and paired sell orders from the pure planner
+- canceled stale buy orders that are no longer valid for the current market/capacity state
+- preserved dry-run behavior by planning and logging actions without mutating persisted state
+- kept sell sizing tied to recovered inventory quantity instead of recomputing it from quote budget
+- added mocked runtime tests for dry-run planning, buy placement, sell placement, and stale-order cancellation
 
 ### Phase 6: Recovery
 
