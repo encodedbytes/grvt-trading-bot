@@ -1,6 +1,6 @@
 # Grid Bot Implementation Plan
 
-Status: implemented through Phase 8; Phase 9 live rollout remains pending
+Status: implemented
 
 This file is the persistent implementation plan for a first-pass grid bot in this repo.
 
@@ -401,7 +401,7 @@ Delivered:
 
 ### Phase 9: Live Rollout
 
-Status: in progress
+Status: implemented
 
 Goal:
 - validate the first grid bot safely on GRVT
@@ -415,7 +415,7 @@ Tasks:
 Completion criteria:
 - at least one full buy-fill -> sell-fill round trip completes without manual intervention
 
-Current rollout prep:
+Delivered:
 - added a conservative dry-run ETH config at `local-configs/config.grid.eth.toml`
 - added optional `seed_enabled = true` support for operators who want one startup market buy before the normal passive grid lifecycle begins
 - initial defaults use:
@@ -428,10 +428,14 @@ Current rollout prep:
   - `max_active_buy_orders = 2`
   - `max_inventory_levels = 2`
   - `dry_run = true`
+- validated the live GRVT ETH rollout with the seeded-grid option and normal passive refill behavior
+- confirmed dashboard, CLI, and recovery views stay aligned with the live exchange state during rollout
+- fixed rollout issues discovered in production-like use, including live open-order reconciliation and dashboard fallback handling for grid containers
 
 Live rollout notes:
 - `seed_enabled = true` is optional and should be treated as a higher-turnover startup mode, not the default safe mode
 - the seed buy is assigned to the highest configured buy level below market, then exits through the normal paired-sell path
+- the current grid rollout is considered operationally validated for continued live use on GRVT
 
 ## Recommended Initial Defaults
 
