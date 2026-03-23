@@ -95,6 +95,12 @@ class GridBotState:
         level.status = "buy_open"
         level.entry_order_id = order_id
         level.entry_client_order_id = client_order_id
+        level.entry_fill_price = None
+        level.entry_quantity = None
+        level.exit_order_id = None
+        level.exit_client_order_id = None
+        level.exit_fill_price = None
+        level.realized_pnl_estimate = None
         level.updated_at = when.astimezone(UTC).isoformat()
 
     def mark_buy_filled(
