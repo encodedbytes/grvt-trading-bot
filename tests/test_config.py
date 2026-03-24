@@ -385,6 +385,7 @@ symbol = "ETH_USDT_Perp"
 side = "buy"
 order_type = "limit"
 seed_enabled = true
+reseed_when_flat = true
 initial_leverage = "3"
 margin_type = "cross"
 price_band_low = "1800"
@@ -420,6 +421,7 @@ dry_run = true
     assert config.grid.max_active_buy_orders == 3
     assert config.grid.max_inventory_levels == 4
     assert config.grid.seed_enabled is True
+    assert config.grid.reseed_when_flat is True
     assert config.grid.state_file == tmp_path / "state" / ".gravity-grid-eth.json"
 
 
@@ -454,6 +456,7 @@ max_inventory_levels = 2
     assert config.grid.order_type == "limit"
     assert config.grid.spacing_mode == "arithmetic"
     assert config.grid.seed_enabled is False
+    assert config.grid.reseed_when_flat is False
     assert config.grid.state_file == Path(".gravity-grid-state.json")
 
 

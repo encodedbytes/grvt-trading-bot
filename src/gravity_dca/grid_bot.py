@@ -223,6 +223,56 @@ class GridBot:
             for level in state.levels
         )
 
+    def _should_reseed_when_flat(
+        self,
+        *,
+        recovery_action: str,
+        state: GridBotState,
+        exchange_position,
+    ) -> bool:
+        if not self._settings.reseed_when_flat:
+            return False
+        if recovery_action == "initialize-from-config":
+            return False
+        if exchange_position is not None:
+            return False
+        if state.completed_round_trips < 1:
+            return False
+        return not any(
+            level.status in {"filled_inventory", "sell_open"}
+            for level in state.levels
+        )
+
+    def _clear_open_buy_level(
+        self,
+        *,
+        state: GridBotState,
+        level_index: int,
+        now: datetime,
+    ) -> bool:
+        level = state.level(level_index)
+        if level.status != "buy_open":
+            return False
+        if self._config.runtime.dry_run:
+            self._logger.info("Dry run: would cancel grid buy order at reseed level %s", level_index)
+        else:
+            self._exchange.cancel_order(
+                symbol=self._settings.symbol,
+                order_id=level.entry_order_id,
+                client_order_id=level.entry_client_order_id,
+            )
+        level.status = "idle"
+        level.entry_order_id = None
+        level.entry_client_order_id = None
+        level.entry_fill_price = None
+        level.entry_quantity = None
+        level.exit_order_id = None
+        level.exit_client_order_id = None
+        level.exit_fill_price = None
+        level.realized_pnl_estimate = None
+        level.updated_at = now.astimezone(UTC).isoformat()
+        return True
+
     def _apply_seed_order(
         self,
         *,
@@ -239,6 +289,11 @@ class GridBot:
                 snapshot.last,
             )
             return False
+        cleared_existing_buy = self._clear_open_buy_level(
+            state=state,
+            level_index=level_index,
+            now=now,
+        )
         plan = self._build_seed_order_plan(
             instrument=instrument,
             snapshot=snapshot,
@@ -246,7 +301,7 @@ class GridBot:
         )
         if self._config.runtime.dry_run:
             self._logger.info("Dry run: would place %s", plan.reason)
-            return True
+            return True or cleared_existing_buy
         order_id = self._submit_order(plan)
         if order_id is None:
             raise ValueError(
@@ -281,7 +336,7 @@ class GridBot:
                 extra_lines=[f"level_index={level_index}"],
             )
         )
-        return True
+        return True or cleared_existing_buy
 
     def _place_desired_orders(self, *, state: GridBotState, instrument, decision, now: datetime) -> bool:
         changed = False
@@ -407,6 +462,19 @@ class GridBot:
             recovery_action=recovery.action,
             state=state,
             open_orders=open_orders,
+            exchange_position=exchange_position,
+        ):
+            changed = self._apply_seed_order(
+                state=state,
+                instrument=instrument,
+                snapshot=snapshot,
+                now=now,
+            )
+            if changed and not self._config.runtime.dry_run:
+                self._persist_state(state)
+        elif self._should_reseed_when_flat(
+            recovery_action=recovery.action,
+            state=state,
             exchange_position=exchange_position,
         ):
             changed = self._apply_seed_order(

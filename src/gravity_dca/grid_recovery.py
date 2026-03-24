@@ -113,6 +113,54 @@ def _matching_fill(level: GridLevelState, fills: list[AccountFill], *, side: str
     return sorted(candidates, key=lambda item: item.event_time)[-1]
 
 
+def _aggregate_fill_candidates(candidates: list[AccountFill]) -> AccountFill | None:
+    if not candidates:
+        return None
+    ordered = sorted(candidates, key=lambda item: item.event_time)
+    total_size = sum((fill.size for fill in ordered), Decimal("0"))
+    if total_size <= 0:
+        return ordered[-1]
+    total_notional = sum((fill.size * fill.price for fill in ordered), Decimal("0"))
+    latest = ordered[-1]
+    return AccountFill(
+        event_time=latest.event_time,
+        symbol=latest.symbol,
+        side=latest.side,
+        size=total_size,
+        price=(total_notional / total_size),
+        order_id=latest.order_id,
+        client_order_id=latest.client_order_id,
+        raw=latest.raw,
+    )
+
+
+def _matching_fill_aggregate(
+    level: GridLevelState,
+    fills: list[AccountFill],
+    *,
+    side: str,
+) -> AccountFill | None:
+    candidates: list[AccountFill] = []
+    for fill in fills:
+        if fill.side != side:
+            continue
+        if side == "buy":
+            if level.entry_order_id and fill.order_id == level.entry_order_id:
+                candidates.append(fill)
+                continue
+            if level.entry_client_order_id and fill.client_order_id == level.entry_client_order_id:
+                candidates.append(fill)
+                continue
+        else:
+            if level.exit_order_id and fill.order_id == level.exit_order_id:
+                candidates.append(fill)
+                continue
+            if level.exit_client_order_id and fill.client_order_id == level.exit_client_order_id:
+                candidates.append(fill)
+                continue
+    return _aggregate_fill_candidates(candidates)
+
+
 def _matching_fill_by_level(
     settings: GridSettings,
     fills: list[AccountFill],
@@ -147,6 +195,40 @@ def _matching_fill_by_level(
     if not candidates:
         return None
     return sorted(candidates, key=lambda item: item.event_time)[-1]
+
+
+def _matching_fill_by_level_aggregate(
+    settings: GridSettings,
+    fills: list[AccountFill],
+    *,
+    side: str,
+    level_index: int,
+) -> AccountFill | None:
+    levels = build_grid_levels(settings)
+    candidates: list[AccountFill] = []
+    for fill in fills:
+        if fill.side != side or fill.symbol != settings.symbol:
+            continue
+        if side == "buy":
+            lower_bound = levels[level_index]
+            upper_bound = paired_sell_price(level_index, levels)
+            if upper_bound is None:
+                continue
+            if fill.price < lower_bound:
+                continue
+            if fill.price >= upper_bound and not within_tolerance(
+                fill.price, upper_bound, PRICE_TOLERANCE_RATIO
+            ):
+                continue
+            fill_level_index = level_index
+        else:
+            try:
+                fill_level_index = _level_for_price(settings, fill.price)
+            except ValueError:
+                continue
+        if fill_level_index == level_index:
+            candidates.append(fill)
+    return _aggregate_fill_candidates(candidates)
 
 
 def _clear_stale_buy(level: GridLevelState) -> None:
@@ -203,7 +285,7 @@ def reconcile_grid_state(
 
     for level in recovered.levels:
         if level.status == "buy_open" and ("buy", level.level_index) not in order_levels:
-            fill = _matching_fill(level, fills, side="buy")
+            fill = _matching_fill_aggregate(level, fills, side="buy")
             if fill is not None:
                 recovered.mark_buy_filled(
                     level_index=level.level_index,
@@ -245,7 +327,7 @@ def reconcile_grid_state(
             level.updated_at = when.isoformat()
         elif side == "sell":
             if level.status == "buy_open":
-                fill = _matching_fill(level, fills, side="buy")
+                fill = _matching_fill_aggregate(level, fills, side="buy")
                 if fill is None:
                     raise ValueError(
                         f"Open sell order has no matching inventory for level: level_index={level_index}"
@@ -261,7 +343,7 @@ def reconcile_grid_state(
                 changes.append(f"buy-filled:{level_index}")
                 level = recovered.level(level_index)
             if level.status == "idle":
-                fill = _matching_fill_by_level(
+                fill = _matching_fill_by_level_aggregate(
                     settings,
                     fills,
                     side="buy",

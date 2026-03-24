@@ -316,3 +316,73 @@ def test_reconcile_grid_state_raises_when_inventory_disagrees_with_exchange_posi
             fills=[],
             when=now,
         )
+
+
+def test_reconcile_grid_state_aggregates_partial_buy_fills_for_reopened_level() -> None:
+    now = datetime(2026, 3, 23, tzinfo=UTC)
+    state = initialized_state()
+    state.mark_buy_filled(
+        level_index=2,
+        when=now,
+        fill_price=Decimal("2000"),
+        quantity=Decimal("0.004"),
+        order_id="0xentry-2",
+        client_order_id="buy-2",
+    )
+    state.open_sell_order(
+        level_index=2,
+        when=now,
+        order_id="0xsell-2",
+        client_order_id="sell-2",
+    )
+    state.open_buy_order(
+        level_index=1,
+        when=now,
+        order_id=None,
+        client_order_id="buy-1",
+    )
+
+    decision = reconcile_grid_state(
+        state=state,
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="sell",
+                price=Decimal("2100"),
+                size=Decimal("0.004"),
+                order_id="0xsell-2",
+                client_order_id="sell-2",
+                reduce_only=True,
+            ),
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.008"),
+            average_entry_price=Decimal("2050"),
+        ),
+        fills=[
+            AccountFill(
+                event_time=1,
+                symbol="ETH_USDT_Perp",
+                side="buy",
+                size=Decimal("0.002"),
+                price=Decimal("1900"),
+                client_order_id="buy-1",
+            ),
+            AccountFill(
+                event_time=2,
+                symbol="ETH_USDT_Perp",
+                side="buy",
+                size=Decimal("0.002"),
+                price=Decimal("1900"),
+                client_order_id="buy-1",
+            ),
+        ],
+        when=now,
+    )
+
+    assert decision.recovered_state.level(1).status == "filled_inventory"
+    assert decision.recovered_state.level(1).entry_quantity == Decimal("0.004")
+    assert decision.recovered_state.level(1).entry_fill_price == Decimal("1900")

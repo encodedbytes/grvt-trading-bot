@@ -432,3 +432,92 @@ poll_seconds = 30
     assert saved[-1].level(2).status == "sell_open"
     assert saved[-1].level(1).status == "buy_open"
     assert any("grid seed order filled" in message for message in bot._notifier.messages)
+
+
+def test_grid_bot_reseeds_when_flat_after_completed_round_trip(monkeypatch) -> None:
+    saved: list[GridBotState] = []
+    state = initialized_state()
+    state.completed_round_trips = 1
+    now = datetime(2026, 3, 20, tzinfo=UTC)
+    state.open_buy_order(level_index=2, when=now, order_id="0xbuy2", client_order_id="buy-2")
+    state.open_buy_order(level_index=1, when=now, order_id="0xbuy1", client_order_id="buy-1")
+
+    bot = GridBot.__new__(GridBot)
+    bot._config = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1800"
+price_band_high = "2200"
+grid_levels = 5
+quote_amount_per_level = "100"
+max_active_buy_orders = 2
+max_inventory_levels = 2
+seed_enabled = true
+reseed_when_flat = true
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        resolve_state_paths=False,
+    )
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(
+        market_price="2050",
+        open_orders=[
+            {
+                "symbol": "ETH_USDT_Perp",
+                "side": "buy",
+                "price": "2000",
+                "amount": "0.05",
+                "id": "0xbuy2",
+                "clientOrderId": "buy-2",
+            },
+            {
+                "symbol": "ETH_USDT_Perp",
+                "side": "buy",
+                "price": "1900",
+                "amount": "0.05",
+                "id": "0xbuy1",
+                "clientOrderId": "buy-1",
+            },
+        ],
+        fill_reports=[
+            FillReport(
+                order_id="0xseed",
+                client_order_id="seed-client",
+                status="FILLED",
+                traded_size=Decimal("0.04878"),
+                avg_fill_price=Decimal("2050"),
+                raw={},
+            )
+        ],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: state)
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, value: saved.append(value))
+
+    result = bot.run_once()
+
+    assert result is True
+    assert bot._exchange.canceled_orders[0]["client_order_id"] == "buy-2"
+    assert bot._exchange.placed_orders[0]["order_type"] == "market"
+    assert bot._exchange.placed_orders[0]["side"] == "buy"
+    assert any(order["side"] == "sell" and order["price"] == Decimal("2100") for order in bot._exchange.placed_orders)
+    assert saved[-1].level(2).status == "sell_open"
+    assert saved[-1].level(1).status == "buy_open"

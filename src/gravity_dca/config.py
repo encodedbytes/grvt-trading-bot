@@ -72,6 +72,7 @@ class GridSettings:
     max_active_buy_orders: int
     max_inventory_levels: int
     seed_enabled: bool = False
+    reseed_when_flat: bool = False
     initial_leverage: Decimal | None = None
     margin_type: str | None = None
     state_file: Path = Path(".gravity-grid-state.json")
@@ -313,6 +314,7 @@ def _build_app_config(
         if price_band_low >= price_band_high:
             raise ValueError("price_band_low must be less than price_band_high")
         seed_enabled = bool(grid.get("seed_enabled", False))
+        reseed_when_flat = bool(grid.get("reseed_when_flat", False))
         grid_state_file = (
             _resolve_state_file(grid.get("state_file", ".gravity-grid-state.json"), config_path)
             if resolve_state_paths
@@ -330,6 +332,7 @@ def _build_app_config(
             max_active_buy_orders=max_active_buy_orders,
             max_inventory_levels=max_inventory_levels,
             seed_enabled=seed_enabled,
+            reseed_when_flat=reseed_when_flat,
             initial_leverage=_optional_decimal(grid.get("initial_leverage")),
             margin_type=(
                 str(grid["margin_type"]).strip()

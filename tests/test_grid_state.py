@@ -158,5 +158,37 @@ def test_load_grid_state_text_defaults_for_empty_payload() -> None:
     assert loaded.grid is None
     assert loaded.levels == []
     assert loaded.completed_round_trips == 0
-    assert loaded.active_inventory_levels == 0
-    assert loaded.last_error is None
+
+
+def test_open_buy_order_clears_stale_exit_fields_from_previous_round_trip() -> None:
+    now = datetime.now(tz=UTC)
+    state = GridBotState()
+    state.initialize_grid(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        price_band_low=Decimal("1800"),
+        price_band_high=Decimal("2200"),
+        grid_levels=2,
+        spacing_mode="arithmetic",
+        quote_amount_per_level=Decimal("100"),
+        prices=[Decimal("1800"), Decimal("2200")],
+        when=now,
+    )
+    level = state.level(0)
+    level.exit_fill_price = Decimal("1820")
+    level.realized_pnl_estimate = Decimal("1.00")
+    level.entry_fill_price = Decimal("1800")
+    level.entry_quantity = Decimal("0.05")
+
+    state.open_buy_order(level_index=0, when=now, order_id="0xnew", client_order_id="buy-2")
+
+    level = state.level(0)
+    assert level.status == "buy_open"
+    assert level.entry_fill_price is None
+    assert level.entry_quantity is None
+    assert level.exit_order_id is None
+    assert level.exit_client_order_id is None
+    assert level.exit_fill_price is None
+    assert level.realized_pnl_estimate is None
+    assert state.active_inventory_levels == 0
+    assert state.last_error is None
