@@ -418,6 +418,7 @@ Completion criteria:
 Delivered:
 - added a conservative dry-run ETH config at `local-configs/config.grid.eth.toml`
 - added optional `seed_enabled = true` support for operators who want one startup market buy before the normal passive grid lifecycle begins
+- added optional `reseed_when_flat = true` support for operators who want a fresh market reseed after a completed round trip leaves the grid flat
 - initial defaults use:
   - `symbol = "ETH_USDT_Perp"`
   - `initial_leverage = "3"`
@@ -435,6 +436,8 @@ Delivered:
 Live rollout notes:
 - `seed_enabled = true` is optional and should be treated as a higher-turnover startup mode, not the default safe mode
 - the seed buy is assigned to the highest configured buy level below market, then exits through the normal paired-sell path
+- `reseed_when_flat = true` is optional and should be treated as a higher-turnover always-in mode, not the default safe mode
+- grid open-buy placement is constrained by both `max_active_buy_orders` and the remaining `max_inventory_levels` capacity
 - the current grid rollout is considered operationally validated for continued live use on GRVT
 
 ## Recommended Initial Defaults
