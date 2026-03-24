@@ -334,6 +334,7 @@ def main() -> None:
             print(f"grid_levels={config.grid.grid_levels}")
             print(f"spacing_mode={config.grid.spacing_mode}")
             print(f"seed_enabled={'true' if config.grid.seed_enabled else 'false'}")
+            print(f"reseed_when_flat={'true' if config.grid.reseed_when_flat else 'false'}")
             print(f"max_active_buy_orders={config.grid.max_active_buy_orders}")
             print(f"max_inventory_levels={config.grid.max_inventory_levels}")
             return
@@ -438,6 +439,7 @@ def main() -> None:
             print(f"grid_levels={config.grid.grid_levels}")
             print(f"spacing_mode={config.grid.spacing_mode}")
             print(f"seed_enabled={'true' if config.grid.seed_enabled else 'false'}")
+            print(f"reseed_when_flat={'true' if config.grid.reseed_when_flat else 'false'}")
             print(
                 "active_buy_levels="
                 + ",".join(str(level.level_index) for level in state.levels if level.status == "buy_open")

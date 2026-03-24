@@ -356,6 +356,7 @@ def _build_grid_status_snapshot(
         "max_active_buy_orders": settings.max_active_buy_orders,
         "max_inventory_levels": settings.max_inventory_levels,
         "seed_enabled": settings.seed_enabled,
+        "reseed_when_flat": settings.reseed_when_flat,
         "telegram_enabled": config.telegram.enabled,
         "completed_cycles": state.completed_round_trips,
         "completed_round_trips": state.completed_round_trips,
