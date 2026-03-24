@@ -147,6 +147,11 @@ Grid v1 optional startup behavior:
 - the seed inventory is assigned to the highest configured grid level below market
 - after that fill, the bot resumes normal paired-sell grid behavior
 
+Grid v1 optional reseed behavior:
+- `reseed_when_flat = true` places a fresh market seed after a completed round trip leaves the grid flat
+- reseeding is separate from `seed_enabled`; startup seeding and post-exit reseeding can be enabled independently
+- when reseeding, the bot clears the open buy order at the reseed level first so it does not double-count exposure on that slot
+
 The most important settings are:
 - `environment`
 - `api_key`
@@ -202,8 +207,9 @@ For `order_type = "limit"`:
 
 For the grid bot:
 - the configured price band is split into fixed arithmetic levels
-- resting buy orders are maintained below market, up to `max_active_buy_orders`
+- resting buy orders are maintained below market, up to `max_active_buy_orders` and also capped by the remaining `max_inventory_levels` capacity
 - optional `seed_enabled = true` places one startup market buy on the highest grid level below market, once per fresh grid initialization
+- optional `reseed_when_flat = true` places a fresh market seed after the grid fully exits and no inventory remains
 - filled inventory levels get paired sell orders one grid step above the filled buy level
 - restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
 
@@ -232,6 +238,8 @@ Grid state additionally tracks per-level order and inventory status, including:
 - last reconciliation timestamp
 
 When `grid.seed_enabled = true`, the first startup seed fill is stored as normal grid inventory on its assigned level, so later sell pairing and recovery still use the standard per-level lifecycle.
+
+When `grid.reseed_when_flat = true`, a later full exit can trigger a fresh market seed on the highest configured buy level below market. The reseeded inventory is then tracked through the same normal per-level sell-pairing and recovery flow.
 
 Use a unique `state_file` per bot instance.
 
