@@ -80,6 +80,63 @@ class GridBot:
     def _persist_state(self, state: GridBotState) -> None:
         save_grid_state(self._settings.state_file, state)
 
+    def _is_retryable_recovery_error(self, error: Exception) -> bool:
+        message = str(error)
+        return any(
+            fragment in message
+            for fragment in (
+                "Grid inventory quantity does not match exchange position",
+                "Grid local inventory exists but no exchange position is open",
+                "Open sell order has no matching inventory for level",
+            )
+        )
+
+    def _reconcile_state_with_exchange(
+        self,
+        *,
+        state: GridBotState,
+        now: datetime,
+    ) -> tuple[GridBotState, str, list[GridOpenOrderSnapshot], object | None]:
+        attempts = max(1, self._config.runtime.private_auth_retry_attempts)
+        backoff_seconds = max(0, self._config.runtime.private_auth_retry_backoff_seconds)
+        last_error: Exception | None = None
+
+        for attempt in range(1, attempts + 1):
+            open_orders = self._normalize_open_orders(
+                self._exchange.fetch_open_orders(symbol=self._settings.symbol)
+            )
+            exchange_position = self._exchange.get_open_position(self._settings.symbol)
+            fills = self._exchange.get_recent_fills(self._settings.symbol, limit=100)
+            try:
+                recovery = reconcile_grid_state(
+                    state=state,
+                    settings=self._settings,
+                    open_orders=open_orders,
+                    exchange_position=exchange_position,
+                    fills=fills,
+                    when=now,
+                )
+                if recovery.action != "keep-local" and not self._config.runtime.dry_run:
+                    self._persist_state(recovery.recovered_state)
+                return recovery.recovered_state, recovery.action, open_orders, exchange_position
+            except ValueError as exc:
+                last_error = exc
+                if attempt >= attempts or not self._is_retryable_recovery_error(exc):
+                    raise
+                self._logger.warning(
+                    "Grid recovery snapshot mismatch. Retrying exchange snapshot. "
+                    "attempt=%s/%s error=%s",
+                    attempt,
+                    attempts,
+                    exc,
+                )
+                if backoff_seconds > 0:
+                    time.sleep(backoff_seconds * attempt)
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Grid recovery failed without a captured exception")
+
     def _normalize_open_orders(self, payloads: list[dict]) -> list[GridOpenOrderSnapshot]:
         normalized: list[GridOpenOrderSnapshot] = []
         instrument = self._exchange.get_instrument(self._settings.symbol)
@@ -439,27 +496,14 @@ class GridBot:
 
         instrument = self._exchange.get_instrument(self._settings.symbol)
         snapshot = self._exchange.get_market_snapshot(self._settings.symbol)
-        open_orders = self._normalize_open_orders(
-            self._exchange.fetch_open_orders(symbol=self._settings.symbol)
-        )
-        exchange_position = self._exchange.get_open_position(self._settings.symbol)
-        fills = self._exchange.get_recent_fills(self._settings.symbol, limit=100)
-
-        recovery = reconcile_grid_state(
+        state, recovery_action, open_orders, exchange_position = self._reconcile_state_with_exchange(
             state=state,
-            settings=self._settings,
-            open_orders=open_orders,
-            exchange_position=exchange_position,
-            fills=fills,
-            when=now,
+            now=now,
         )
-        state = recovery.recovered_state
-        if recovery.action != "keep-local" and not self._config.runtime.dry_run:
-            self._persist_state(state)
 
         changed = False
         if self._should_seed_on_start(
-            recovery_action=recovery.action,
+            recovery_action=recovery_action,
             state=state,
             open_orders=open_orders,
             exchange_position=exchange_position,
@@ -473,7 +517,7 @@ class GridBot:
             if changed and not self._config.runtime.dry_run:
                 self._persist_state(state)
         elif self._should_reseed_when_flat(
-            recovery_action=recovery.action,
+            recovery_action=recovery_action,
             state=state,
             exchange_position=exchange_position,
         ):

@@ -7,6 +7,7 @@ from decimal import Decimal
 from gravity_dca.config import load_config_text
 from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, PositionSnapshot
 from gravity_dca.grid_bot import GridBot
+from gravity_dca.grid_recovery import reconcile_grid_state as real_reconcile_grid_state
 from gravity_dca.grid_state import GridBotState
 from gravity_dca.grvt_models import FillReport
 from gravity_dca.grid_strategy import build_grid_levels
@@ -188,6 +189,39 @@ def test_grid_bot_places_missing_buy_orders_in_dry_run(monkeypatch) -> None:
     assert result is True
     assert bot._exchange.placed_orders == []
     assert any("GRVT bot started" in message for message in fake_notifier.messages)
+
+
+def test_grid_bot_retries_transient_inventory_mismatch_during_recovery(monkeypatch) -> None:
+    fake_notifier = FakeNotifier()
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=True)
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(market_price="2050")
+    bot._notifier = fake_notifier
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    calls = {"count": 0}
+
+    def flaky_reconcile(**kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise ValueError(
+                "Grid inventory quantity does not match exchange position: "
+                "local_qty=0.157 exchange_qty=0.316"
+            )
+        return real_reconcile_grid_state(**kwargs)
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: None)
+    monkeypatch.setattr("gravity_dca.grid_bot.reconcile_grid_state", flaky_reconcile)
+    monkeypatch.setattr("gravity_dca.grid_bot.time.sleep", lambda seconds: None)
+
+    result = bot.run_once()
+
+    assert result is True
+    assert calls["count"] == 2
 
 
 def test_grid_bot_persists_placed_buy_orders(monkeypatch) -> None:
