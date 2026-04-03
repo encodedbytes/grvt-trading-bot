@@ -202,6 +202,11 @@ class GridBot:
         return normalized
 
     def _build_order_plan(self, *, state: GridBotState, instrument, order) -> OrderPlan:
+        order_price = self._exchange.round_price(order.price, instrument.tick_size)
+        if order_price <= 0:
+            raise ValueError(
+                f"Computed grid order price must be positive for level {order.level_index}: {order.price}"
+            )
         if order.side == "sell":
             level = state.level(order.level_index)
             if level.entry_quantity is None:
@@ -212,7 +217,7 @@ class GridBot:
         else:
             amount = compute_amount_from_quote(
                 quote_amount=self._settings.quote_amount_per_level,
-                reference_price=order.price,
+                reference_price=order_price,
                 instrument=instrument,
                 exchange=self._exchange,
             )
@@ -222,7 +227,7 @@ class GridBot:
             side=order.side,
             order_type="limit",
             amount=amount,
-            price=order.price,
+            price=order_price,
             reduce_only=(order.side == "sell"),
             reason=f"grid-{order.side}-level-{order.level_index}",
         )
@@ -257,8 +262,10 @@ class GridBot:
             reduce_only=plan.reduce_only,
         )
         result = response.get("result", response)
-        if isinstance(result, dict) and result.get("order_id") is not None:
-            return str(result["order_id"])
+        if isinstance(result, dict):
+            order_id = result.get("order_id") or result.get("id")
+            if order_id is not None:
+                return str(order_id)
         return None
 
     def _should_seed_on_start(
@@ -395,6 +402,17 @@ class GridBot:
         )
         return True or cleared_existing_buy
 
+    def _warn_unacknowledged_grid_order(self, *, plan: OrderPlan) -> None:
+        self._logger.warning(
+            "GRVT did not acknowledge grid order submission; leaving state unchanged and retrying "
+            "on the next poll. reason=%s symbol=%s side=%s amount=%s client_order_id=%s",
+            plan.reason,
+            plan.symbol,
+            plan.side,
+            plan.amount,
+            plan.client_order_id,
+        )
+
     def _place_desired_orders(self, *, state: GridBotState, instrument, decision, now: datetime) -> bool:
         changed = False
         for level_index in decision.cancel_buy_level_indices:
@@ -422,10 +440,8 @@ class GridBot:
                 continue
             order_id = self._submit_order(plan)
             if order_id is None:
-                raise ValueError(
-                    f"GRVT did not acknowledge grid order submission for {plan.reason} "
-                    f"{plan.symbol} {plan.side} amount={plan.amount}"
-                )
+                self._warn_unacknowledged_grid_order(plan=plan)
+                continue
             state.open_buy_order(
                 level_index=desired.level_index,
                 when=now,
@@ -453,10 +469,8 @@ class GridBot:
                 continue
             order_id = self._submit_order(plan)
             if order_id is None:
-                raise ValueError(
-                    f"GRVT did not acknowledge grid order submission for {plan.reason} "
-                    f"{plan.symbol} {plan.side} amount={plan.amount}"
-                )
+                self._warn_unacknowledged_grid_order(plan=plan)
+                continue
             state.open_sell_order(
                 level_index=desired.level_index,
                 when=now,

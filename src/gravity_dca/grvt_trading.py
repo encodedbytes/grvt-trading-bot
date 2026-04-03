@@ -27,6 +27,9 @@ CHAIN_ID_BY_ENV = {env.value: chain_id for env, chain_id in CHAIN_IDS.items()}
 
 
 class GrvtTradingGateway:
+    _ORDER_ACK_FETCH_ATTEMPTS = 3
+    _ORDER_ACK_FETCH_DELAY_SECONDS = 1
+
     def __init__(
         self,
         *,
@@ -255,6 +258,64 @@ class GrvtTradingGateway:
         self.set_initial_leverage(symbol, desired_leverage)
         return [f"leverage={desired_leverage}"]
 
+    def _extract_order_id(self, response: object) -> str | None:
+        if not isinstance(response, dict):
+            return None
+        result = response.get("result", response)
+        if not isinstance(result, dict):
+            return None
+        order_id = result.get("order_id") or result.get("id")
+        if order_id in (None, ""):
+            return None
+        return str(order_id)
+
+    def _matching_client_order_id(self, payload: object) -> str | None:
+        if not isinstance(payload, dict):
+            return None
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("client_order_id") not in (None, ""):
+            return str(metadata["client_order_id"])
+        for key in ("clientOrderId", "client_order_id"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return None
+
+    def _fetch_order_submission_ack(self, *, symbol: str, client_order_id: str) -> dict | None:
+        for attempt in range(1, self._ORDER_ACK_FETCH_ATTEMPTS + 1):
+            try:
+                response = self.fetch_order(client_order_id=client_order_id)
+            except Exception as exc:
+                self._logger.warning(
+                    "GRVT order ack lookup failed after create_order returned no order id. "
+                    "attempt=%s/%s client_order_id=%s error=%s",
+                    attempt,
+                    self._ORDER_ACK_FETCH_ATTEMPTS,
+                    client_order_id,
+                    exc,
+                )
+            else:
+                if self._extract_order_id(response) is not None:
+                    return response
+            try:
+                open_orders = self.fetch_open_orders(symbol=symbol)
+            except Exception as exc:
+                self._logger.warning(
+                    "GRVT open-order ack lookup failed after create_order returned no order id. "
+                    "attempt=%s/%s client_order_id=%s error=%s",
+                    attempt,
+                    self._ORDER_ACK_FETCH_ATTEMPTS,
+                    client_order_id,
+                    exc,
+                )
+            else:
+                for payload in open_orders:
+                    if self._matching_client_order_id(payload) == client_order_id:
+                        return payload
+            if attempt < self._ORDER_ACK_FETCH_ATTEMPTS:
+                time.sleep(self._ORDER_ACK_FETCH_DELAY_SECONDS)
+        return None
+
     def place_order(
         self,
         *,
@@ -280,6 +341,19 @@ class GrvtTradingGateway:
             params=params,
         )
         self._logger.info("order_response=%s", response)
+        if self._extract_order_id(response) is not None:
+            return response
+        fallback_response = self._fetch_order_submission_ack(
+            symbol=symbol,
+            client_order_id=client_order_id,
+        )
+        if fallback_response is not None:
+            self._logger.warning(
+                "GRVT create_order returned no order id, but fetch_order confirmed submission. "
+                "client_order_id=%s",
+                client_order_id,
+            )
+            return fallback_response
         return response
 
     def cancel_order(

@@ -9,6 +9,7 @@ import requests
 from gravity_dca.grvt_market import GrvtMarketData
 from gravity_dca.grvt_auth import GrvtPrivateSession
 from gravity_dca.grvt_models import TransientExchangeError
+from gravity_dca.grvt_trading import GrvtTradingGateway
 
 
 def auth_session(attempts: int) -> GrvtPrivateSession:
@@ -264,3 +265,101 @@ def test_get_candles_wraps_transient_exchange_errors() -> None:
         assert "GRVT fetch_ohlcv failed for ETH_USDT_Perp timeframe=5m" in str(exc)
     else:
         raise AssertionError("TransientExchangeError was not raised")
+
+
+def trading_gateway(*, client) -> GrvtTradingGateway:
+    return GrvtTradingGateway(
+        client=client,
+        env=SimpleNamespace(value="prod"),
+        private_key="pk",
+        trading_account_id="123",
+        trade_data_endpoint="https://edge.grvt.io",
+        auth=SimpleNamespace(ensure_private_auth=lambda: None),
+        market=SimpleNamespace(),
+        logger=logging.getLogger("gravity_dca"),
+    )
+
+
+def test_place_order_confirms_submission_when_create_order_returns_empty_payload(monkeypatch) -> None:
+    calls = {"fetch_order": 0}
+
+    def fake_fetch_order(*, id=None, params=None):
+        calls["fetch_order"] += 1
+        return {
+            "result": {
+                "order_id": "0xack",
+                "metadata": {"client_order_id": params["client_order_id"]},
+            }
+        }
+
+    gateway = trading_gateway(
+        client=SimpleNamespace(
+            create_order=lambda **kwargs: {},
+            fetch_order=fake_fetch_order,
+            fetch_open_orders=lambda symbol: [],
+        )
+    )
+    monkeypatch.setattr("gravity_dca.grvt_trading.time.sleep", lambda seconds: None)
+
+    response = gateway.place_order(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        order_type="limit",
+        amount=Decimal("0.148"),
+        price=Decimal("2020"),
+        client_order_id="grid-buy-level-9",
+    )
+
+    assert response["result"]["order_id"] == "0xack"
+    assert calls["fetch_order"] == 1
+
+
+def test_place_order_confirms_submission_from_open_orders_when_fetch_order_lags(monkeypatch) -> None:
+    calls = {"fetch_order": 0, "fetch_open_orders": 0}
+
+    def fake_fetch_order(*, id=None, params=None):
+        calls["fetch_order"] += 1
+        return {
+            "code": 1004,
+            "message": "Data Not Found",
+            "status": 404,
+        }
+
+    def fake_fetch_open_orders(*, symbol):
+        calls["fetch_open_orders"] += 1
+        return [
+            {
+                "id": "0xopen",
+                "metadata": {"client_order_id": "grid-buy-level-9"},
+                "legs": [
+                    {
+                        "instrument": symbol,
+                        "size": "0.148",
+                        "limit_price": "2020",
+                        "is_buying_asset": True,
+                    }
+                ],
+            }
+        ]
+
+    gateway = trading_gateway(
+        client=SimpleNamespace(
+            create_order=lambda **kwargs: {},
+            fetch_order=fake_fetch_order,
+            fetch_open_orders=fake_fetch_open_orders,
+        )
+    )
+    monkeypatch.setattr("gravity_dca.grvt_trading.time.sleep", lambda seconds: None)
+
+    response = gateway.place_order(
+        symbol="ETH_USDT_Perp",
+        side="buy",
+        order_type="limit",
+        amount=Decimal("0.148"),
+        price=Decimal("2020"),
+        client_order_id="grid-buy-level-9",
+    )
+
+    assert response["id"] == "0xopen"
+    assert calls["fetch_order"] == 1
+    assert calls["fetch_open_orders"] == 1

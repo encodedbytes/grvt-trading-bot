@@ -88,11 +88,17 @@ def plan_grid_orders(
         for level in state.levels
         if level.status in {"filled_inventory", "sell_open"}
     )
+    blocked_buy_level_indices = {
+        level_index + 1
+        for level_index in inventory_level_indices
+        if level_index + 1 < len(levels)
+    }
 
     candidate_buy_level_indices = [
         index
         for index, price in enumerate(levels[:-1])
         if price < market_price
+        and index not in blocked_buy_level_indices
         and state_levels.get(index, GridLevelState(level_index=index, price=price)).status in {"idle", "buy_open"}
     ]
     inventory_capacity = max(0, settings.max_inventory_levels - len(inventory_level_indices))

@@ -10,7 +10,7 @@ from gravity_dca.grid_bot import GridBot
 from gravity_dca.grid_recovery import reconcile_grid_state as real_reconcile_grid_state
 from gravity_dca.grid_state import GridBotState
 from gravity_dca.grvt_models import FillReport
-from gravity_dca.grid_strategy import build_grid_levels
+from gravity_dca.grid_strategy import GridDesiredOrder, build_grid_levels
 from gravity_dca.telegram import format_startup_message
 
 
@@ -65,12 +65,14 @@ class FakeExchange:
         open_position=None,
         fills=None,
         fill_reports=None,
+        place_order_responses=None,
     ) -> None:
         self.market_price = Decimal(market_price)
         self._open_orders = list(open_orders or [])
         self._open_position = open_position
         self._fills = list(fills or [])
         self._fill_reports = list(fill_reports or [])
+        self._place_order_responses = list(place_order_responses or [])
         self.placed_orders: list[dict] = []
         self.canceled_orders: list[dict] = []
 
@@ -117,6 +119,8 @@ class FakeExchange:
 
     def place_order(self, **kwargs):
         self.placed_orders.append(kwargs)
+        if self._place_order_responses:
+            return self._place_order_responses.pop(0)
         return {"result": {"order_id": f"0x{len(self.placed_orders)}"}}
 
     def cancel_order(self, **kwargs):
@@ -246,6 +250,103 @@ def test_grid_bot_persists_placed_buy_orders(monkeypatch) -> None:
     assert saved[-1].level(2).status == "buy_open"
     assert saved[-1].level(1).status == "buy_open"
     assert any("grid buy order placed" in message for message in fake_notifier.messages)
+
+
+def test_grid_bot_accepts_ccxt_style_order_id(monkeypatch) -> None:
+    saved: list[GridBotState] = []
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=False)
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(
+        market_price="2050",
+        place_order_responses=[{"id": "0xabc"}, {"id": "0xdef"}],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: saved.append(state))
+
+    result = bot.run_once()
+
+    assert result is True
+    assert saved[-1].level(2).entry_order_id == "0xabc"
+    assert saved[-1].level(1).entry_order_id == "0xdef"
+
+
+def test_grid_bot_skips_unacknowledged_limit_orders_and_retries_later(monkeypatch) -> None:
+    saved: list[GridBotState] = []
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=False)
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(
+        market_price="2050",
+        place_order_responses=[{}, {}],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: saved.append(state))
+
+    result = bot.run_once()
+
+    assert result is False
+    assert saved[-1].level(2).status == "idle"
+    assert saved[-1].level(1).status == "idle"
+    assert not any("grid buy order placed" in message for message in bot._notifier.messages)
+
+
+def test_grid_bot_rounds_fractional_grid_price_to_tick_size() -> None:
+    loaded = load_config_text(
+        """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[strategy]
+type = "grid"
+
+[grid]
+symbol = "ETH_USDT_Perp"
+price_band_low = "1880"
+price_band_high = "2140"
+grid_levels = 18
+quote_amount_per_level = "300"
+max_active_buy_orders = 6
+max_inventory_levels = 6
+state_file = "/state/.gravity-grid-eth.json"
+
+[runtime]
+dry_run = false
+poll_seconds = 30
+""",
+        resolve_state_paths=False,
+    )
+    assert loaded.grid is not None
+
+    bot = GridBot.__new__(GridBot)
+    bot._config = loaded
+    bot._logger = logging.getLogger("gravity_dca")
+    bot._exchange = FakeExchange(market_price="2060")
+
+    plan = bot._build_order_plan(
+        state=GridBotState(),
+        instrument=bot._exchange.get_instrument("ETH_USDT_Perp"),
+        order=GridDesiredOrder(
+            level_index=5,
+            side="buy",
+            price=Decimal("1956.470588235"),
+        ),
+    )
+
+    assert plan.price == Decimal("1956.47")
 
 
 def test_grid_bot_places_sell_order_for_filled_inventory(monkeypatch) -> None:
