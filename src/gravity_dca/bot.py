@@ -131,8 +131,10 @@ class DcaBot:
             reduce_only=plan.reduce_only,
         )
         result = response.get("result", response)
-        if isinstance(result, dict) and result.get("order_id") is not None:
-            return str(result["order_id"])
+        if isinstance(result, dict):
+            order_id = result.get("order_id") or result.get("id")
+            if order_id is not None:
+                return str(order_id)
         return None
 
     def _require_order_id(self, plan, order_id: str | None) -> str:
