@@ -438,6 +438,9 @@ Live rollout notes:
 - the seed buy is assigned to the highest configured buy level below market, then exits through the normal paired-sell path
 - `reseed_when_flat = true` is optional and should be treated as a higher-turnover always-in mode, not the default safe mode
 - grid open-buy placement is constrained by both `max_active_buy_orders` and the remaining `max_inventory_levels` capacity
+- the planner keeps the highest eligible buy levels below market and can cancel lower stale buy orders as price rises
+- a level currently reserved as the paired sell target for inventory is not eligible for a simultaneous buy order
+- grid limit prices are rounded down to the instrument tick size before order submission
 - the current grid rollout is considered operationally validated for continued live use on GRVT
 
 ## Recommended Initial Defaults
