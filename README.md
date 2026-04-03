@@ -208,9 +208,12 @@ For `order_type = "limit"`:
 For the grid bot:
 - the configured price band is split into fixed arithmetic levels
 - resting buy orders are maintained below market, up to `max_active_buy_orders` and also capped by the remaining `max_inventory_levels` capacity
+- the bot keeps the highest eligible buy levels below market; as price rises, lower stale buy orders can be canceled and replaced by higher levels closer to market
 - optional `seed_enabled = true` places one startup market buy on the highest grid level below market, once per fresh grid initialization
 - optional `reseed_when_flat = true` places a fresh market seed after the grid fully exits and no inventory remains
 - filled inventory levels get paired sell orders one grid step above the filled buy level
+- a level currently reserved as the paired sell target for inventory is not eligible for a simultaneous buy order
+- grid limit prices are rounded down to the instrument tick size before submission
 - restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
 
 ## State
