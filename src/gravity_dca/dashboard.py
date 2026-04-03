@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import logging
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 import subprocess
 import tarfile
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -19,24 +19,44 @@ from .dashboard_payload import (
 )
 from .dashboard_runtime import (
     DockerContainer,
-    container_state as _container_state,
-    docker_api_read_file as _docker_api_read_file,
-    docker_bin as _docker_bin,
-    docker_socket_path as _docker_socket_path,
-    fetch_bot_status_from_api as _fetch_bot_status_from_api,
     get_container_logs,
     list_running_bot_containers,
+)
+from .dashboard_runtime import (
+    container_state as _container_state,
+)
+from .dashboard_runtime import (
+    docker_api_read_file as _docker_api_read_file,
+)
+from .dashboard_runtime import (
+    docker_bin as _runtime_docker_bin,
+)
+from .dashboard_runtime import (
+    docker_socket_path as _runtime_docker_socket_path,
+)
+from .dashboard_runtime import (
+    fetch_bot_status_from_api as _fetch_bot_status_from_api,
+)
+from .dashboard_runtime import (
     load_recent_log_info as _load_recent_log_info,
 )
+from .dashboard_template import HTML_PAGE
 from .grid_state import GridBotState, load_grid_state, load_grid_state_text
 from .momentum_state import MomentumBotState, load_momentum_state, load_momentum_state_text
 from .state import BotState, load_state, load_state_text
 from .status_snapshot import build_status_snapshot, new_runtime_status
-from .dashboard_template import HTML_PAGE
-
 
 UTC = timezone.utc
 LOGGER = logging.getLogger("gravity_dca.dashboard")
+
+
+def _docker_bin() -> str:
+    return _runtime_docker_bin()
+
+
+def _docker_socket_path() -> str | None:
+    return _runtime_docker_socket_path()
+
 
 def _to_text(value: Any) -> str | None:
     if value is None:

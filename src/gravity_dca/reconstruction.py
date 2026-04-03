@@ -50,8 +50,8 @@ def _group_fills(fills: list[AccountFill]) -> list[GroupedFill]:
         side = bucket[0].side
         if any(fill.side != side for fill in bucket):
             return []
-        total_size = sum(fill.size for fill in bucket)
-        total_cost = sum(fill.size * fill.price for fill in bucket)
+        total_size = sum((fill.size for fill in bucket), Decimal("0"))
+        total_cost = sum((fill.size * fill.price for fill in bucket), Decimal("0"))
         average_price = total_cost / total_size if total_size > 0 else Decimal("0")
         result.append(
             GroupedFill(
@@ -147,8 +147,8 @@ def reconstruct_active_cycle(
                 ),
             )
 
-    total_quantity = sum(fill.size for fill in ordered_entries)
-    total_cost = sum(fill.size * fill.average_price for fill in ordered_entries)
+    total_quantity = sum((fill.size for fill in ordered_entries), Decimal("0"))
+    total_cost = sum((fill.size * fill.average_price for fill in ordered_entries), Decimal("0"))
     average_entry_price = total_cost / total_quantity
     if not within_tolerance(
         average_entry_price,

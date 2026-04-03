@@ -1,40 +1,52 @@
 Metadata-Version: 2.4
 Name: gravity-dca-bot
-Version: 0.1.0
+Version: 0.5.0
 Summary: A configurable DCA bot for GRVT perpetual markets.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: grvt-pysdk>=0.2.1
 Provides-Extra: dev
+Requires-Dist: mypy>=1.10.0; extra == "dev"
 Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: ruff>=0.6.0; extra == "dev"
+Requires-Dist: types-requests>=2.32.0; extra == "dev"
 
-# GRVT DCA Bot
+# GRVT Futures Bots
 
-Python futures DCA bot for GRVT perpetual markets.
+Python futures trading bots for GRVT perpetual markets.
 
 Planning documents:
 - [TASKS.md](TASKS.md)
 - [TASKS_TELEGRAM.md](TASKS_TELEGRAM.md)
 - [TASKS_MOMENTUM.md](TASKS_MOMENTUM.md)
+- [TASKS_DASHBOARD.md](TASKS_DASHBOARD.md)
+- [TASKS_GRID.md](TASKS_GRID.md)
+
+Momentum strategy config example:
+- [config.momentum.example.toml](config.momentum.example.toml)
+
+Grid strategy config example:
+- [config.grid.example.toml](config.grid.example.toml)
 
 ## Overview
 
-The bot:
-- opens an initial long or short position
-- adds safety orders as price moves against the position
-- recalculates average entry after each fill
-- closes the full position at take profit or stop loss
-- stores cycle state in a local JSON file
-- can sync GRVT leverage and `margin_type` before trading
+The repo currently includes:
+- a DCA bot with initial entry, safety orders, take profit, and optional stop loss
+- a momentum bot with trend-plus-breakout entry, ATR-based stops, and trend-failure exits
+- a grid bot with bounded long-only limit-grid execution, restart recovery, CLI support, bot-local API support, and dashboard support
+- local state persistence and restart recovery
+- a local dashboard and bot-local read-only status API
 
 Important behavior:
 - entries and exits can use `market` or aggressive `limit` orders
 - take profit is price-based, not ROE-based
-- on startup, the bot first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
-- if full reconstruction is not safe, it falls back to position-level recovery
+- the momentum bot is long-only in this first version
+- on startup, DCA recovery first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
+- momentum recovery reconciles local state with the live exchange position and recomputes ATR-backed stop metadata
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 - GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
 - when a bot has no active cycle and has reached `max_cycles`, it sends a one-time inactive notification instead of silently going idle
+- each long-running bot exposes a tiny read-only local API for health and status
 
 ## Quick Start
 
@@ -68,6 +80,18 @@ Inspect the bot's current operator status in one view:
 make status CONFIG=config.toml
 ```
 
+For momentum configs, `make status` also prints flat-state entry diagnostics such as:
+- `entry_decision`
+- `entry_reason`
+- `latest_close`
+- `breakout_level`
+- `ema_fast`
+- `ema_slow`
+- `adx`
+- `atr_percent`
+
+For grid configs, `make status` prints the current band, grid level count, open buy count, inventory count, seed-on-start mode, completed round trips, and the latest recovery decision.
+
 Inspect the current active cycle thresholds:
 
 ```bash
@@ -98,15 +122,61 @@ Run the local web dashboard for Docker-managed bots:
 make dashboard
 ```
 
+The dashboard prefers each bot's local read-only status API. When that API is unavailable, it falls back to Docker inspection and the drawer shows that degraded source explicitly so you can tell when live signal diagnostics are unavailable.
+
 Run tests:
 
 ```bash
 make test
 ```
 
+Run the lightweight developer checks:
+
+```bash
+make lint
+make typecheck
+make check
+```
+
+What they do:
+- `make lint` runs Ruff against `src` and `tests`
+- `make typecheck` runs the current narrow mypy pass
+- `make check` runs lint, typecheck, and the full test suite
+
+Run the dashboard in Docker:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-run
+```
+
 ## Configuration
 
 Start from [config.example.toml](config.example.toml).
+
+Momentum configs can start from [config.momentum.example.toml](config.momentum.example.toml).
+
+Grid configs can start from [config.grid.example.toml](config.grid.example.toml).
+
+Supported strategy config sections now include:
+- `[dca]`
+- `[momentum]`
+- `[grid]`
+
+Grid v1 constraints:
+- long-only: `side = "buy"`
+- limit-only: `order_type = "limit"`
+- arithmetic spacing only
+
+Grid v1 optional startup behavior:
+- `seed_enabled = true` places one market buy on fresh grid initialization
+- the seed inventory is assigned to the highest configured grid level below market
+- after that fill, the bot resumes normal paired-sell grid behavior
+
+Grid v1 optional reseed behavior:
+- `reseed_when_flat = true` places a fresh market seed after a completed round trip leaves the grid flat
+- reseeding is separate from `seed_enabled`; startup seeding and post-exit reseeding can be enabled independently
+- when reseeding, the bot clears the open buy order at the reseed level first so it does not double-count exposure on that slot
 
 The most important settings are:
 - `environment`
@@ -125,6 +195,7 @@ The most important settings are:
 - `stop_loss_percent`
 - `dry_run`
 - `state_file`
+- `runtime.bot_api_port`
 
 Notes:
 - `initial_quote_amount` and `safety_order_quote_amount` are quote-currency budgets, not base size.
@@ -133,6 +204,8 @@ Notes:
 - `take_profit_percent` is based on price move from average entry, not leveraged ROE.
 - `initial_leverage` and `margin_type` are optional.
 - `runtime.private_auth_retry_attempts` and `runtime.private_auth_retry_backoff_seconds` control retry behavior for transient GRVT private-auth failures.
+- `runtime.bot_api_port` controls the bot-local read-only API port and defaults to `8787`.
+- optional config values should be omitted entirely when unused; TOML `null` is not valid and the loader now reports that explicitly.
 - private GRVT POST calls also refresh the SDK session cookie on unauthenticated `401` responses before retrying once.
 - Production credentials require `environment = "prod"`.
 - For host-side CLI use, Docker-style `state_file = "/state/..."` paths are mapped to the nearest parent `state/` directory when `/state` does not exist locally. This allows configs under subdirectories like `local-configs/` to still use the repo-level `state/` directory.
@@ -158,9 +231,24 @@ For `order_type = "limit"`:
 - exit sells use an aggressive limit derived from the bid side
 - if the order is not filled within `runtime.limit_ttl_seconds`, the bot cancels it and leaves state unchanged
 
+For the grid bot:
+- the configured price band is split into fixed arithmetic levels
+- resting buy orders are maintained below market, up to `max_active_buy_orders` and also capped by the remaining `max_inventory_levels` capacity
+- the bot keeps the highest eligible buy levels below market; as price rises, lower stale buy orders can be canceled and replaced by higher levels closer to market
+- optional `seed_enabled = true` places one startup market buy on the highest grid level below market, once per fresh grid initialization
+- optional `reseed_when_flat = true` places a fresh market seed after the grid fully exits and no inventory remains
+- filled inventory levels get paired sell orders one grid step above the filled buy level
+- a level currently reserved as the paired sell target for inventory is not eligible for a simultaneous buy order
+- grid limit prices are rounded down to the instrument tick size before submission
+- restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
+
 ## State
 
 The bot stores cycle state in the path configured by `dca.state_file`.
+
+Momentum state is stored separately in the path configured by `momentum.state_file`.
+
+Grid state is stored separately in the path configured by `grid.state_file`.
 
 State includes:
 - symbol and side
@@ -170,6 +258,17 @@ State includes:
 - leverage and margin type
 - last client order id
 - last GRVT order id
+
+Grid state additionally tracks per-level order and inventory status, including:
+- open buy levels
+- inventory-bearing levels
+- paired sell orders
+- completed round trips
+- last reconciliation timestamp
+
+When `grid.seed_enabled = true`, the first startup seed fill is stored as normal grid inventory on its assigned level, so later sell pairing and recovery still use the standard per-level lifecycle.
+
+When `grid.reseed_when_flat = true`, a later full exit can trigger a fresh market seed on the highest configured buy level below market. The reseeded inventory is then tracked through the same normal per-level sell-pairing and recovery flow.
 
 Use a unique `state_file` per bot instance.
 
@@ -218,6 +317,30 @@ Build the image:
 make docker-build
 ```
 
+By default, local Docker builds use the current git-derived tag from `git describe --tags --always --dirty`, so the image names look like `gravity-dca-bot:v0.3.0-2-gabcdef1` and `gravity-dca-dashboard:v0.3.0-2-gabcdef1`.
+
+Inspect the computed local image names without building:
+
+```bash
+make docker-image-info
+```
+
+Override the tag manually when needed:
+
+```bash
+make docker-build IMAGE_TAG=v0.3.0
+make dashboard-docker-build IMAGE_TAG=v0.3.0
+```
+
+Build the dashboard image:
+
+```bash
+make dashboard-docker-build
+```
+
+Dashboard detail views use the bot-local API when possible and fall back to Docker-based inspection when necessary. In fallback mode, the drawer now tells you that live momentum `Signals` data is unavailable because the bot API could not be reached.
+The dashboard refresh timestamp is announced politely for assistive tech, view-toggle buttons now provide hover feedback, grid cards use strategy-specific `Grid Runtime` labels, and degraded-mode banners include the next operator step instead of only the raw failure.
+
 For Docker, mount a writable `state/` directory and point `state_file` to `/state/...`, for example:
 
 ```toml
@@ -252,23 +375,91 @@ Stop it:
 make docker-down CONTAINER=grvt-dca-eth
 ```
 
+The default bot image exposes container port `8787` for the read-only bot API. If you change `runtime.bot_api_port`, the bot listens on that configured container port instead. The standard Make and Compose workflows keep the bot API internal to the Docker network and do not publish it to the host by default.
+
 ## Web Dashboard
 
 The repo includes a local read-only monitoring dashboard for running bot containers.
+
+Each long-running bot now also serves a tiny read-only local API inside its own process. The dashboard prefers this API for bot configuration and local state, and falls back to Docker-based inspection when the API is not reachable.
 
 What it shows:
 - running bot containers discovered from Docker
 - mounted config and state file paths
 - symbol, environment, order type, dry-run mode, and configured leverage
 - active cycle summary with entry, quantity, TP, SL, and next safety trigger
+- momentum signal diagnostics such as `entry_reason`, breakout, EMA, ADX, and ATR context
 - completed cycle count and last closed cycle summary
 - recent error line and most recent log line from each container
+- explicit `risk-reduce-only` runtime state when GRVT cross margin blocks exposure-increasing orders
 - clickable per-bot detail panel with live log tailing
+- configurable card layout with `Vertical` and `Horizontal` views
+- URL-synced view and selected bot state for reload/shareable dashboard context
+- keyboard shortcut support for `Esc` to close the detail drawer
 
 It does not:
 - place trades
 - call the exchange
 - modify config or state
+
+Bot-local API:
+- endpoint: `GET /health`
+- endpoint: `GET /status`
+- bind: `0.0.0.0:<runtime.bot_api_port>` inside the bot container
+- default port: `8787`
+- purpose: expose the bot's already-loaded config, local state, thresholds, lifecycle, and recent iteration error state
+
+`GET /status` response includes:
+- symbol and environment
+- order type, dry-run mode, state file, configured leverage, and margin type
+- lifecycle state and completed/max cycles
+- active cycle summary
+- TP, SL, and next safety trigger thresholds
+- last closed cycle summary when present
+- runtime status timestamps, the most recent iteration error, and `risk-reduce-only` state when present
+
+Notes:
+- the bot API is read-only
+- the default bot API port is `8787`
+- set `runtime.bot_api_port` per bot when you need multiple host-side bot processes on the same machine
+- the Make and Compose flows do not publish that port to the host by default
+- the dashboard reads each bot's configured API port from its config and connects to that port on the container network when available
+- the dashboard can reach the bot API when it runs on the same Docker network or bridge; otherwise it falls back to Docker-based inspection
+
+Run it locally:
+
+```bash
+make dashboard
+```
+
+Run it in Docker:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-run
+```
+
+Run it in Docker in the background:
+
+```bash
+make dashboard-docker-build
+make dashboard-docker-up
+make dashboard-docker-logs
+```
+
+Stop the dashboard container:
+
+```bash
+make dashboard-docker-down
+```
+
+The dashboard container needs access to the host Docker socket so it can inspect running bot containers and tail their logs:
+
+```bash
+-v /var/run/docker.sock:/var/run/docker.sock
+```
+
+By default the dashboard image listens on `0.0.0.0:8080`, and the Make targets publish that as `http://localhost:8080`.
 
 Default address:
 - `http://127.0.0.1:8080`
@@ -285,6 +476,9 @@ Local:
 - `make thresholds CONFIG=config.toml`
 - `make recovery-status CONFIG=config.toml`
 - `make notify-test CONFIG=config.toml`
+- `make lint`
+- `make typecheck`
+- `make check`
 - `make test`
 
 Docker:
@@ -294,6 +488,11 @@ Docker:
 - `make docker-restart CONFIG=config.toml CONTAINER=grvt-dca-eth`
 - `make docker-logs CONTAINER=grvt-dca-eth`
 - `make docker-down CONTAINER=grvt-dca-eth`
+- `make dashboard-docker-build`
+- `make dashboard-docker-run`
+- `make dashboard-docker-up`
+- `make dashboard-docker-logs`
+- `make dashboard-docker-down`
 
 ## Docker Hub CI
 

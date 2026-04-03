@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-import tomllib
 
 
 @dataclass(frozen=True)
@@ -118,6 +118,34 @@ def _optional_decimal(value: object) -> Decimal | None:
     return Decimal(str(value))
 
 
+def _validate_side(value: object, *, field_name: str) -> str:
+    side = str(value).strip().lower()
+    if side not in {"buy", "sell"}:
+        raise ValueError(f"{field_name} must be 'buy' or 'sell'")
+    return side
+
+
+def _validate_order_type(value: object, *, field_name: str) -> str:
+    order_type = str(value).strip().lower()
+    if order_type not in {"market", "limit"}:
+        raise ValueError(f"{field_name} must be 'market' or 'limit'")
+    return order_type
+
+
+def _require_positive_int(value: object, *, field_name: str) -> int:
+    parsed = int(str(value))
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+    return parsed
+
+
+def _validate_port(value: object, *, field_name: str) -> int:
+    port = int(str(value))
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{field_name} must be between 1 and 65535")
+    return port
+
+
 def _resolve_state_file(raw_path: object, config_path: str | Path) -> Path:
     path = Path(str(raw_path))
     if not path.is_absolute():
@@ -213,6 +241,11 @@ def _build_app_config(
 
     dca_settings = None
     if dca is not None:
+        dca_side = _validate_side(dca.get("side", "buy"), field_name="dca side")
+        dca_order_type = _validate_order_type(
+            dca.get("order_type", "market"),
+            field_name="dca order_type",
+        )
         dca_state_file = (
             _resolve_state_file(dca.get("state_file", ".gravity-dca-state.json"), config_path)
             if resolve_state_paths
@@ -220,10 +253,10 @@ def _build_app_config(
         )
         dca_settings = DcaSettings(
             symbol=str(dca["symbol"]),
-            side=str(dca.get("side", "buy")).lower(),
+            side=dca_side,
             initial_quote_amount=Decimal(str(dca["initial_quote_amount"])),
             safety_order_quote_amount=Decimal(str(dca["safety_order_quote_amount"])),
-            order_type=str(dca.get("order_type", "market")).strip().lower(),
+            order_type=dca_order_type,
             limit_price_offset_percent=Decimal(
                 str(dca.get("limit_price_offset_percent", "0"))
             ),
@@ -245,9 +278,13 @@ def _build_app_config(
 
     momentum_settings = None
     if momentum is not None:
-        momentum_side = str(momentum.get("side", "buy")).lower()
+        momentum_side = _validate_side(momentum.get("side", "buy"), field_name="momentum side")
         if momentum_side != "buy":
             raise ValueError("momentum side must be 'buy'")
+        momentum_order_type = _validate_order_type(
+            momentum.get("order_type", "market"),
+            field_name="momentum order_type",
+        )
         momentum_state_file = (
             _resolve_state_file(momentum.get("state_file", ".gravity-momentum-state.json"), config_path)
             if resolve_state_paths
@@ -257,7 +294,7 @@ def _build_app_config(
             symbol=str(momentum["symbol"]),
             side=momentum_side,
             quote_amount=Decimal(str(momentum["quote_amount"])),
-            order_type=str(momentum.get("order_type", "market")).strip().lower(),
+            order_type=momentum_order_type,
             limit_price_offset_percent=Decimal(
                 str(momentum.get("limit_price_offset_percent", "0"))
             ),
@@ -352,11 +389,26 @@ def _build_app_config(
         dca=dca_settings,
         runtime=RuntimeSettings(
             dry_run=bool(runtime.get("dry_run", True)),
-            poll_seconds=int(runtime.get("poll_seconds", 30)),
-            bot_api_port=int(runtime.get("bot_api_port", 8787)),
-            order_fill_timeout_seconds=int(runtime.get("order_fill_timeout_seconds", 10)),
-            order_fill_poll_seconds=int(runtime.get("order_fill_poll_seconds", 1)),
-            limit_ttl_seconds=int(runtime.get("limit_ttl_seconds", 30)),
+            poll_seconds=_require_positive_int(
+                runtime.get("poll_seconds", 30),
+                field_name="runtime poll_seconds",
+            ),
+            bot_api_port=_validate_port(
+                runtime.get("bot_api_port", 8787),
+                field_name="runtime bot_api_port",
+            ),
+            order_fill_timeout_seconds=_require_positive_int(
+                runtime.get("order_fill_timeout_seconds", 10),
+                field_name="runtime order_fill_timeout_seconds",
+            ),
+            order_fill_poll_seconds=_require_positive_int(
+                runtime.get("order_fill_poll_seconds", 1),
+                field_name="runtime order_fill_poll_seconds",
+            ),
+            limit_ttl_seconds=_require_positive_int(
+                runtime.get("limit_ttl_seconds", 30),
+                field_name="runtime limit_ttl_seconds",
+            ),
             private_auth_retry_attempts=int(runtime.get("private_auth_retry_attempts", 3)),
             private_auth_retry_backoff_seconds=int(
                 runtime.get("private_auth_retry_backoff_seconds", 2)

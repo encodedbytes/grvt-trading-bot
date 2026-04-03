@@ -51,6 +51,9 @@ class DummyExchange:
     def fetch_open_orders(self, *, symbol: str):
         return []
 
+    def round_price(self, price: Decimal, tick_size: Decimal) -> Decimal:
+        return (price // tick_size) * tick_size
+
     def get_candles(self, symbol: str, *, timeframe: str, limit: int):
         from gravity_dca.grvt_models import Candle
 
@@ -546,7 +549,14 @@ def test_normalize_grid_open_orders_supports_raw_grvt_shape() -> None:
                 },
             ]
 
-    normalized = cli._normalize_grid_open_orders(RawOrderExchange(), settings)
+    exchange = RawOrderExchange()
+    instrument = exchange.get_instrument(settings.symbol)
+    normalized = cli.normalize_grid_open_orders(
+        exchange.fetch_open_orders(symbol=settings.symbol),
+        symbol=settings.symbol,
+        tick_size=instrument.tick_size,
+        round_price=exchange.round_price,
+    )
 
     assert len(normalized) == 2
     assert normalized[0].side == "buy"

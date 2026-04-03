@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Callable
 
 from .config import GridSettings
 from .exchange import AccountFill, PositionSnapshot
@@ -28,6 +29,71 @@ class GridRecoveryDecision:
     action: str
     message: str
     recovered_state: GridBotState
+
+
+def normalize_grid_open_orders(
+    payloads: list[dict],
+    *,
+    symbol: str,
+    tick_size: Decimal,
+    round_price: Callable[[Decimal, Decimal], Decimal],
+) -> list[GridOpenOrderSnapshot]:
+    normalized: list[GridOpenOrderSnapshot] = []
+    for payload in payloads:
+        legs = payload.get("legs") or []
+        leg = legs[0] if isinstance(legs, list) and legs else None
+        if isinstance(leg, dict):
+            payload_symbol = str(
+                leg.get("instrument") or payload.get("symbol") or payload.get("instrument") or ""
+            )
+            side = "buy" if leg.get("is_buying_asset") else "sell"
+            price_value = leg.get("limit_price", payload.get("price"))
+            state = payload.get("state") or {}
+            book_size = state.get("book_size") if isinstance(state, dict) else None
+            size_value = book_size[0] if isinstance(book_size, list) and book_size else book_size
+            if size_value in (None, "", "0", 0):
+                size_value = leg.get("size", payload.get("amount", payload.get("size")))
+            client_order_id = (
+                payload.get("metadata", {}).get("client_order_id")
+                if isinstance(payload.get("metadata"), dict)
+                else None
+            )
+            reduce_only = bool(payload.get("reduce_only", False))
+        else:
+            payload_symbol = str(payload.get("symbol") or payload.get("instrument") or "")
+            side = str(payload.get("side", "")).strip().lower()
+            price_value = payload.get("price")
+            size_value = (
+                payload.get("remaining")
+                if payload.get("remaining") not in (None, "", "0", 0)
+                else payload.get("amount", payload.get("size"))
+            )
+            client_order_id = (
+                str(payload.get("clientOrderId") or payload.get("client_order_id"))
+                if payload.get("clientOrderId") or payload.get("client_order_id")
+                else None
+            )
+            reduce_only = bool(
+                payload.get("reduceOnly")
+                if payload.get("reduceOnly") is not None
+                else payload.get("reduce_only", False)
+            )
+        if payload_symbol != symbol or side not in {"buy", "sell"}:
+            continue
+        if price_value in (None, "", "0", 0) or size_value in (None, "", "0", 0):
+            continue
+        normalized.append(
+            GridOpenOrderSnapshot(
+                symbol=payload_symbol,
+                side=side,
+                price=round_price(Decimal(str(price_value)), tick_size),
+                size=Decimal(str(size_value)),
+                order_id=str(payload["id"]) if payload.get("id") else None,
+                client_order_id=str(client_order_id) if client_order_id else None,
+                reduce_only=reduce_only,
+            )
+        )
+    return normalized
 
 
 def _level_for_price(settings: GridSettings, price: Decimal) -> int:
@@ -373,9 +439,12 @@ def reconcile_grid_state(
     _refresh_counts(recovered)
 
     inventory_quantity = sum(
-        level.entry_quantity or Decimal("0")
-        for level in recovered.levels
-        if level.status in {"filled_inventory", "sell_open"}
+        (
+            level.entry_quantity if level.entry_quantity is not None else Decimal("0")
+            for level in recovered.levels
+            if level.status in {"filled_inventory", "sell_open"}
+        ),
+        Decimal("0"),
     )
     if exchange_position is None:
         if inventory_quantity > 0:

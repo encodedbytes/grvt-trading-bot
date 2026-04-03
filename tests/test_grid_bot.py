@@ -4,15 +4,17 @@ import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import pytest
+
+from gravity_dca.bot_api import build_shared_status
 from gravity_dca.config import load_config_text
 from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, PositionSnapshot
 from gravity_dca.grid_bot import GridBot
 from gravity_dca.grid_recovery import reconcile_grid_state as real_reconcile_grid_state
 from gravity_dca.grid_state import GridBotState
-from gravity_dca.grvt_models import FillReport
 from gravity_dca.grid_strategy import GridDesiredOrder, build_grid_levels
+from gravity_dca.grvt_models import FillReport
 from gravity_dca.telegram import format_startup_message
-
 
 UTC = timezone.utc
 
@@ -166,6 +168,11 @@ def initialized_state() -> GridBotState:
     return state
 
 
+def attach_shared_status(bot: GridBot) -> GridBot:
+    bot._shared_status = build_shared_status(bot._config, bot._logger)
+    return bot
+
+
 def test_grid_startup_message_includes_symbol_and_side() -> None:
     message = format_startup_message(config(dry_run=True))
 
@@ -179,6 +186,7 @@ def test_grid_bot_places_missing_buy_orders_in_dry_run(monkeypatch) -> None:
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=True)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(market_price="2050")
     bot._notifier = fake_notifier
     bot._startup_notified = False
@@ -200,6 +208,7 @@ def test_grid_bot_retries_transient_inventory_mismatch_during_recovery(monkeypat
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=True)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(market_price="2050")
     bot._notifier = fake_notifier
     bot._startup_notified = False
@@ -234,6 +243,7 @@ def test_grid_bot_persists_placed_buy_orders(monkeypatch) -> None:
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(market_price="2050")
     bot._notifier = fake_notifier
     bot._startup_notified = False
@@ -257,6 +267,7 @@ def test_grid_bot_accepts_ccxt_style_order_id(monkeypatch) -> None:
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         place_order_responses=[{"id": "0xabc"}, {"id": "0xdef"}],
@@ -281,6 +292,7 @@ def test_grid_bot_skips_unacknowledged_limit_orders_and_retries_later(monkeypatc
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         place_order_responses=[{}, {}],
@@ -334,6 +346,7 @@ poll_seconds = 30
     bot = GridBot.__new__(GridBot)
     bot._config = loaded
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(market_price="2060")
 
     plan = bot._build_order_plan(
@@ -363,6 +376,7 @@ def test_grid_bot_places_sell_order_for_filled_inventory(monkeypatch) -> None:
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         open_position=PositionSnapshot(
@@ -396,6 +410,7 @@ def test_grid_bot_cancels_stale_buy_order(monkeypatch) -> None:
     bot = GridBot.__new__(GridBot)
     bot._config = config(dry_run=False)
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         open_orders=[
@@ -454,6 +469,7 @@ poll_seconds = 30
         resolve_state_paths=False,
     )
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2156",
         open_orders=[
@@ -535,6 +551,7 @@ poll_seconds = 30
         resolve_state_paths=False,
     )
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         fill_reports=[
@@ -608,6 +625,7 @@ poll_seconds = 30
         resolve_state_paths=False,
     )
     bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
     bot._exchange = FakeExchange(
         market_price="2050",
         open_orders=[
@@ -656,3 +674,65 @@ poll_seconds = 30
     assert any(order["side"] == "sell" and order["price"] == Decimal("2100") for order in bot._exchange.placed_orders)
     assert saved[-1].level(2).status == "sell_open"
     assert saved[-1].level(1).status == "buy_open"
+
+
+def test_grid_bot_marks_iteration_status_on_success(monkeypatch) -> None:
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=True)
+    bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
+    bot._exchange = FakeExchange(market_price="2050")
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: None)
+
+    result = bot.run_once()
+
+    assert result is True
+    assert bot._shared_status.runtime.last_iteration_started_at is not None
+    assert bot._shared_status.runtime.last_iteration_succeeded_at is not None
+    assert bot._shared_status.runtime.last_iteration_error is None
+
+
+def test_grid_bot_run_forever_starts_bot_api_server(monkeypatch) -> None:
+    events: list[object] = []
+
+    class StopLoop(Exception):
+        pass
+
+    class FakeBotApiServer:
+        def __init__(self, shared_status, *, port):
+            events.append(("init", shared_status, port))
+
+        def __enter__(self):
+            events.append("enter")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append(("exit", exc_type))
+            return False
+
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=True)
+    bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
+    bot._exchange = FakeExchange(market_price="2050")
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.BotApiServer", FakeBotApiServer)
+    monkeypatch.setattr(bot, "run_once", lambda: False)
+    monkeypatch.setattr("gravity_dca.grid_bot.time.sleep", lambda seconds: (_ for _ in ()).throw(StopLoop()))
+
+    with pytest.raises(StopLoop):
+        bot.run_forever()
+
+    assert events[0] == ("init", bot._shared_status, bot._config.runtime.bot_api_port)
+    assert events[1] == "enter"
+    assert events[2] == ("exit", StopLoop)

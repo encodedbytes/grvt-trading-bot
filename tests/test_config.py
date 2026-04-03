@@ -1,6 +1,6 @@
+import re
 from decimal import Decimal
 from pathlib import Path
-import re
 
 import pytest
 
@@ -618,6 +618,155 @@ api_key = "key"
 private_key = "pk"
 trading_account_id = "123"
 
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "sideways"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+""",
+            "dca side must be 'buy' or 'sell'",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+order_type = "post_only"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+""",
+            "dca order_type must be 'market' or 'limit'",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+poll_seconds = 0
+""",
+            "runtime poll_seconds must be greater than 0",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+order_fill_timeout_seconds = 0
+""",
+            "runtime order_fill_timeout_seconds must be greater than 0",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+order_fill_poll_seconds = 0
+""",
+            "runtime order_fill_poll_seconds must be greater than 0",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+limit_ttl_seconds = 0
+""",
+            "runtime limit_ttl_seconds must be greater than 0",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+bot_api_port = 0
+""",
+            "runtime bot_api_port must be between 1 and 65535",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
 [grid]
 symbol = "ETH_USDT_Perp"
 side = "sell"
@@ -629,6 +778,28 @@ max_active_buy_orders = 3
 max_inventory_levels = 4
 """,
             "grid side must be 'buy'",
+        ),
+        (
+            """
+[credentials]
+environment = "prod"
+api_key = "key"
+private_key = "pk"
+trading_account_id = "123"
+
+[dca]
+symbol = "ETH_USDT_Perp"
+side = "buy"
+initial_quote_amount = "25"
+safety_order_quote_amount = "25"
+max_safety_orders = 2
+price_deviation_percent = "2.0"
+take_profit_percent = "1.0"
+
+[runtime]
+bot_api_port = 70000
+""",
+            "runtime bot_api_port must be between 1 and 65535",
         ),
         (
             """

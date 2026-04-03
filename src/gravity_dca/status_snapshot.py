@@ -6,12 +6,10 @@ from typing import Any
 
 from .config import AppConfig
 from .grid_state import GridBotState
-from .momentum_strategy import MomentumIndicatorSnapshot
 from .momentum_state import MomentumBotState
-from .momentum_strategy import fixed_take_profit_price
+from .momentum_strategy import MomentumIndicatorSnapshot, fixed_take_profit_price
 from .state import BotState
 from .strategy import next_safety_trigger_price, stop_loss_price, take_profit_price
-
 
 UTC = timezone.utc
 
@@ -129,9 +127,12 @@ def build_status_snapshot(
     runtime: RuntimeStatus,
 ) -> dict[str, Any]:
     if config.strategy_type == "momentum":
+        assert isinstance(state, MomentumBotState)
         return _build_momentum_status_snapshot(config, state, runtime)
     if config.strategy_type == "grid":
+        assert isinstance(state, GridBotState)
         return _build_grid_status_snapshot(config, state, runtime)
+    assert isinstance(state, BotState)
     return _build_dca_status_snapshot(config, state, runtime)
 
 
@@ -140,50 +141,52 @@ def _build_dca_status_snapshot(
     state: BotState,
     runtime: RuntimeStatus,
 ) -> dict[str, Any]:
+    settings = config.dca
+    assert settings is not None
     active_cycle = state.active_cycle
     lifecycle_state = "idle"
     if active_cycle is not None:
         lifecycle_state = "active"
-    elif config.dca.max_cycles is not None and state.completed_cycles >= config.dca.max_cycles:
+    elif settings.max_cycles is not None and state.completed_cycles >= settings.max_cycles:
         lifecycle_state = "inactive-max-cycles"
 
     return {
         "generated_at": datetime.now(tz=UTC).isoformat(),
-        "symbol": config.dca.symbol,
+        "symbol": settings.symbol,
         "environment": config.credentials.environment,
-        "order_type": config.dca.order_type,
+        "order_type": settings.order_type,
         "dry_run": config.runtime.dry_run,
-        "state_file": str(config.dca.state_file),
+        "state_file": str(settings.state_file),
         "lifecycle_state": lifecycle_state,
         "initial_leverage": (
-            str(config.dca.initial_leverage) if config.dca.initial_leverage is not None else None
+            str(settings.initial_leverage) if settings.initial_leverage is not None else None
         ),
-        "margin_type": config.dca.margin_type,
+        "margin_type": settings.margin_type,
         "poll_seconds": config.runtime.poll_seconds,
         "bot_api_port": config.runtime.bot_api_port,
-        "initial_quote_amount": str(config.dca.initial_quote_amount),
-        "safety_order_quote_amount": str(config.dca.safety_order_quote_amount),
-        "max_safety_orders": config.dca.max_safety_orders,
-        "price_deviation_percent": str(config.dca.price_deviation_percent),
-        "take_profit_percent": str(config.dca.take_profit_percent),
+        "initial_quote_amount": str(settings.initial_quote_amount),
+        "safety_order_quote_amount": str(settings.safety_order_quote_amount),
+        "max_safety_orders": settings.max_safety_orders,
+        "price_deviation_percent": str(settings.price_deviation_percent),
+        "take_profit_percent": str(settings.take_profit_percent),
         "stop_loss_percent": (
-            str(config.dca.stop_loss_percent) if config.dca.stop_loss_percent is not None else None
+            str(settings.stop_loss_percent) if settings.stop_loss_percent is not None else None
         ),
-        "safety_order_step_scale": str(config.dca.safety_order_step_scale),
-        "safety_order_volume_scale": str(config.dca.safety_order_volume_scale),
+        "safety_order_step_scale": str(settings.safety_order_step_scale),
+        "safety_order_volume_scale": str(settings.safety_order_volume_scale),
         "telegram_enabled": config.telegram.enabled,
         "completed_cycles": state.completed_cycles,
-        "max_cycles": config.dca.max_cycles,
+        "max_cycles": settings.max_cycles,
         "active_cycle": serialize_cycle(active_cycle) if active_cycle is not None else None,
         "thresholds": {
             "take_profit_price": (
-                str(take_profit_price(active_cycle, config.dca)) if active_cycle is not None else None
+                str(take_profit_price(active_cycle, settings)) if active_cycle is not None else None
             ),
             "stop_loss_price": (
-                str(stop_loss_price(active_cycle, config.dca)) if active_cycle is not None else None
+                str(stop_loss_price(active_cycle, settings)) if active_cycle is not None else None
             ),
             "next_safety_trigger_price": (
-                str(next_safety_trigger_price(active_cycle, config.dca))
+                str(next_safety_trigger_price(active_cycle, settings))
                 if active_cycle is not None
                 else None
             ),

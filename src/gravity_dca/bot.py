@@ -62,6 +62,12 @@ class DcaBot:
         self._last_iteration_error_at: float = 0.0
         self._inactive_reason_notified: str | None = None
 
+    @property
+    def _settings(self):
+        if self._config.dca is None:
+            raise ValueError("DCA config is required for DcaBot")
+        return self._config.dca
+
     def _notify(self, text: str) -> None:
         result = self._notifier.send(text)
         if not result.delivered and result.detail != "telegram-disabled":
@@ -84,7 +90,7 @@ class DcaBot:
             return
         self._last_iteration_error_key = error_key
         self._last_iteration_error_at = now
-        self._notify(format_iteration_failure(self._config.dca.symbol, error))
+        self._notify(format_iteration_failure(self._settings.symbol, error))
 
     def _maybe_notify_startup(self, state: BotState) -> None:
         if self._startup_notified:
@@ -97,8 +103,8 @@ class DcaBot:
     def _inactive_reason(self, state: BotState) -> str | None:
         if (
             state.active_cycle is None
-            and self._config.dca.max_cycles is not None
-            and state.completed_cycles >= self._config.dca.max_cycles
+            and self._settings.max_cycles is not None
+            and state.completed_cycles >= self._settings.max_cycles
         ):
             return "max-cycles-reached"
         return None
@@ -112,10 +118,10 @@ class DcaBot:
             return
         self._notify(
             format_bot_inactive_message(
-                symbol=self._config.dca.symbol,
+                symbol=self._settings.symbol,
                 reason=reason,
                 completed_cycles=state.completed_cycles,
-                max_cycles=self._config.dca.max_cycles,
+                max_cycles=self._settings.max_cycles,
             )
         )
         self._inactive_reason_notified = reason
@@ -167,13 +173,13 @@ class DcaBot:
         return self._wait_for_fill(plan)
 
     def _persist_state(self, state: BotState) -> None:
-        save_state(self._config.dca.state_file, state)
+        save_state(self._settings.state_file, state)
 
     def _reconcile_state_with_exchange(self, *, state: BotState, now: datetime) -> BotState:
         try:
-            exchange_position = self._exchange.get_open_position(self._config.dca.symbol)
+            exchange_position = self._exchange.get_open_position(self._settings.symbol)
             exchange_fills = (
-                self._exchange.get_recent_fills(self._config.dca.symbol)
+                self._exchange.get_recent_fills(self._settings.symbol)
                 if exchange_position is not None
                 else None
             )
@@ -188,8 +194,8 @@ class DcaBot:
             raise
         decision = reconcile_state(
             state=state,
-            settings=self._config.dca,
-            symbol=self._config.dca.symbol,
+            settings=self._settings,
+            symbol=self._settings.symbol,
             exchange_position=exchange_position,
             exchange_fills=exchange_fills,
             when=now,
@@ -203,7 +209,7 @@ class DcaBot:
                 decision.reconstruction_message,
             )
         if not self._recovery_notified:
-            self._notify(format_recovery_message(self._config.dca.symbol, decision))
+            self._notify(format_recovery_message(self._settings.symbol, decision))
             self._recovery_notified = True
         if decision.action == "keep-local":
             if decision.recovered_cycle is not None:
@@ -221,7 +227,7 @@ class DcaBot:
         return state
 
     def _handle_initial_entry(self, *, state: BotState, now, instrument, snapshot) -> bool:
-        if not should_start_new_cycle(state, self._config.dca):
+        if not should_start_new_cycle(state, self._settings):
             self._logger.info(
                 "No active cycle and max_cycles reached. completed_cycles=%s",
                 state.completed_cycles,
@@ -230,16 +236,16 @@ class DcaBot:
             return False
 
         plan = build_entry_order_plan(
-            settings=self._config.dca,
-            symbol=self._config.dca.symbol,
-            side=self._config.dca.side,
-            quote_amount=self._config.dca.initial_quote_amount,
+            settings=self._settings,
+            symbol=self._settings.symbol,
+            side=self._settings.side,
+            quote_amount=self._settings.initial_quote_amount,
             instrument=instrument,
             snapshot=snapshot,
             exchange=self._exchange,
             reason="initial-entry",
         )
-        fill_price = entry_price(snapshot, self._config.dca.side)
+        fill_price = entry_price(snapshot, self._settings.side)
         self._logger.info(
             "Prepared initial entry side=%s order_type=%s amount=%s price=%s fill_price=%s dry_run=%s",
             plan.side,
@@ -293,7 +299,7 @@ class DcaBot:
         instrument = self._exchange.get_instrument(cycle.symbol)
         plan = build_exit_order_plan(
             cycle=cycle,
-            settings=self._config.dca,
+            settings=self._settings,
             instrument=instrument,
             snapshot=snapshot,
             exchange=self._exchange,
@@ -337,10 +343,10 @@ class DcaBot:
 
     def _handle_safety_order(self, *, state: BotState, cycle, instrument, snapshot) -> bool:
         next_index = cycle.completed_safety_orders + 1
-        quote_amount = current_quote_amount(self._config.dca, next_index)
+        quote_amount = current_quote_amount(self._settings, next_index)
         plan = build_entry_order_plan(
-            settings=self._config.dca,
-            symbol=self._config.dca.symbol,
+            settings=self._settings,
+            symbol=self._settings.symbol,
             side=cycle.side,
             quote_amount=quote_amount,
             instrument=instrument,
@@ -402,22 +408,22 @@ class DcaBot:
     def run_once(self) -> bool:
         started_at = datetime.now(tz=UTC).isoformat()
         self._shared_status.mark_iteration_started(started_at)
-        state = load_state(self._config.dca.state_file)
+        state = load_state(self._settings.state_file)
         now = datetime.now(tz=UTC)
         state = self._reconcile_state_with_exchange(state=state, now=now)
         self._maybe_notify_startup(state)
         self._maybe_notify_inactive_state(state)
         changes = self._exchange.ensure_position_config(
-            symbol=self._config.dca.symbol,
-            leverage=self._config.dca.initial_leverage,
-            margin_type=self._config.dca.margin_type,
+            symbol=self._settings.symbol,
+            leverage=self._settings.initial_leverage,
+            margin_type=self._settings.margin_type,
             dry_run=self._config.runtime.dry_run,
         )
         if self._config.telegram.notify_position_config_changes:
             for change in changes:
-                self._notify(format_position_config_change(self._config.dca.symbol, change))
-        instrument = self._exchange.get_instrument(self._config.dca.symbol)
-        snapshot = self._exchange.get_market_snapshot(self._config.dca.symbol)
+                self._notify(format_position_config_change(self._settings.symbol, change))
+        instrument = self._exchange.get_instrument(self._settings.symbol)
+        snapshot = self._exchange.get_market_snapshot(self._settings.symbol)
 
         if state.active_cycle is None:
             changed = self._handle_initial_entry(
@@ -436,10 +442,10 @@ class DcaBot:
             cycle.average_entry_price,
             cycle.total_quantity,
             cycle.completed_safety_orders,
-            next_safety_trigger_price(cycle, self._config.dca),
+            next_safety_trigger_price(cycle, self._settings),
         )
 
-        if should_take_profit(cycle, snapshot, self._config.dca):
+        if should_take_profit(cycle, snapshot, self._settings):
             changed = self._handle_exit(
                 state=state,
                 cycle=cycle,
@@ -450,7 +456,7 @@ class DcaBot:
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return changed
 
-        if should_stop_loss(cycle, snapshot, self._config.dca):
+        if should_stop_loss(cycle, snapshot, self._settings):
             changed = self._handle_exit(
                 state=state,
                 cycle=cycle,
@@ -461,7 +467,7 @@ class DcaBot:
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return changed
 
-        if should_place_safety_order(cycle, snapshot, self._config.dca):
+        if should_place_safety_order(cycle, snapshot, self._settings):
             changed = self._handle_safety_order(
                 state=state,
                 cycle=cycle,

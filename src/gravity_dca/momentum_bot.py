@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
 import time
+from datetime import datetime, timezone
 
 from .bot_api import BotApiServer, build_shared_status
 from .config import AppConfig
@@ -10,7 +10,6 @@ from .exchange import FillReport, GrvtExchange, PositionConfig, TransientExchang
 from .momentum_recovery import reconcile_momentum_state
 from .momentum_state import MomentumBotState, load_momentum_state, save_momentum_state
 from .momentum_strategy import (
-    build_indicator_snapshot,
     evaluate_entry,
     evaluate_exit,
 )
@@ -35,7 +34,6 @@ from .telegram import (
     format_recovery_message,
     format_startup_message,
 )
-
 
 UTC = timezone.utc
 
@@ -398,10 +396,14 @@ class MomentumBot:
         state = self._reconcile_state_with_exchange(state=state, now=now, candles=candles)
 
         if state.active_position is None:
-            decision = evaluate_entry(candles, self._settings, state)
-            self._set_entry_strategy_status(decision)
-            self._logger.info("Momentum entry decision=%s should_enter=%s", decision.reason, decision.should_enter)
-            if not decision.should_enter:
+            entry_decision = evaluate_entry(candles, self._settings, state)
+            self._set_entry_strategy_status(entry_decision)
+            self._logger.info(
+                "Momentum entry decision=%s should_enter=%s",
+                entry_decision.reason,
+                entry_decision.should_enter,
+            )
+            if not entry_decision.should_enter:
                 self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
                 return False
             plan = self._build_entry_plan(instrument=instrument, snapshot=snapshot)
@@ -411,7 +413,7 @@ class MomentumBot:
             report = self._submit_and_fill(plan)
             if report is None:
                 self._set_entry_strategy_status(
-                    decision,
+                    entry_decision,
                     decision_override="skip",
                     reason_override="limit-timeout",
                 )
@@ -430,19 +432,19 @@ class MomentumBot:
                 leverage=position_config.leverage,
                 margin_type=position_config.margin_type,
                 highest_price_since_entry=(
-                    decision.indicator_snapshot.close_price
-                    if decision.indicator_snapshot is not None
+                    entry_decision.indicator_snapshot.close_price
+                    if entry_decision.indicator_snapshot is not None
                     else report.avg_fill_price
                 ),
-                initial_stop_price=decision.initial_stop_price,
-                trailing_stop_price=decision.trailing_stop_price,
-                breakout_level=decision.breakout_level,
+                initial_stop_price=entry_decision.initial_stop_price,
+                trailing_stop_price=entry_decision.trailing_stop_price,
+                breakout_level=entry_decision.breakout_level,
                 timeframe=self._settings.timeframe,
             )
             self._persist_state(state)
             self._set_live_position_status(
                 state,
-                indicator_snapshot=decision.indicator_snapshot,
+                indicator_snapshot=entry_decision.indicator_snapshot,
                 decision="hold",
                 reason="entry-filled",
             )
@@ -455,32 +457,36 @@ class MomentumBot:
                     price=report.avg_fill_price,
                     order_type=plan.order_type,
                     extra_lines=[
-                        f"breakout_level={decision.breakout_level}",
-                        f"initial_stop_price={decision.initial_stop_price}",
-                        f"trailing_stop_price={decision.trailing_stop_price}",
+                        f"breakout_level={entry_decision.breakout_level}",
+                        f"initial_stop_price={entry_decision.initial_stop_price}",
+                        f"trailing_stop_price={entry_decision.trailing_stop_price}",
                     ],
                 )
             )
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return True
 
-        decision = evaluate_exit(candles, self._settings, state)
-        self._set_exit_strategy_status(decision)
-        self._logger.info("Momentum exit decision=%s should_exit=%s", decision.reason, decision.should_exit)
+        exit_decision = evaluate_exit(candles, self._settings, state)
+        self._set_exit_strategy_status(exit_decision)
+        self._logger.info(
+            "Momentum exit decision=%s should_exit=%s",
+            exit_decision.reason,
+            exit_decision.should_exit,
+        )
         position = state.active_position
         metadata_changed = False
         if position is not None and (
-            decision.highest_price_since_entry != position.highest_price_since_entry
-            or decision.trailing_stop_price != position.trailing_stop_price
+            exit_decision.highest_price_since_entry != position.highest_price_since_entry
+            or exit_decision.trailing_stop_price != position.trailing_stop_price
         ):
             state.update_active_position(
-                highest_price_since_entry=decision.highest_price_since_entry,
-                trailing_stop_price=decision.trailing_stop_price,
+                highest_price_since_entry=exit_decision.highest_price_since_entry,
+                trailing_stop_price=exit_decision.trailing_stop_price,
             )
             self._persist_state(state)
             metadata_changed = True
 
-        if not decision.should_exit:
+        if not exit_decision.should_exit:
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
             return metadata_changed
 
@@ -488,7 +494,7 @@ class MomentumBot:
             state=state,
             instrument=instrument,
             snapshot=snapshot,
-            reason=decision.reason or "momentum-exit",
+            reason=exit_decision.reason or "momentum-exit",
         )
         if self._config.runtime.dry_run:
             self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
@@ -496,7 +502,7 @@ class MomentumBot:
         report = self._submit_and_fill(plan)
         if report is None:
             self._set_exit_strategy_status(
-                decision,
+                exit_decision,
                 decision_override="deferred",
                 reason_override="limit-timeout",
             )
@@ -514,15 +520,15 @@ class MomentumBot:
                 symbol=plan.symbol,
                 label=f"{plan.reason} filled",
                 side=plan.side,
-                quantity=report.traded_size,
-                price=report.avg_fill_price,
-                order_type=plan.order_type,
-                extra_lines=[
-                    f"highest_price_since_entry={decision.highest_price_since_entry}",
-                    f"trailing_stop_price={decision.trailing_stop_price}",
-                ],
+                    quantity=report.traded_size,
+                    price=report.avg_fill_price,
+                    order_type=plan.order_type,
+                    extra_lines=[
+                        f"highest_price_since_entry={exit_decision.highest_price_since_entry}",
+                        f"trailing_stop_price={exit_decision.trailing_stop_price}",
+                    ],
+                )
             )
-        )
         self._shared_status.set_strategy_status(None)
         self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
         return True

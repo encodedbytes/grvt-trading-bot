@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import logging
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from gravity_dca.bot import DcaBot
 from gravity_dca.bot_api import build_shared_status
-from gravity_dca.config import AppConfig, DcaSettings, GrvtCredentials, RuntimeSettings, TelegramSettings
+from gravity_dca.config import (
+    AppConfig,
+    DcaSettings,
+    GrvtCredentials,
+    RuntimeSettings,
+    TelegramSettings,
+)
 from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, TransientExchangeError
 from gravity_dca.state import BotState
-
-
-UTC = timezone.utc
 from gravity_dca.telegram import (
     NullNotifier,
     TelegramNotifier,
@@ -23,6 +26,8 @@ from gravity_dca.telegram import (
     format_recovery_message,
     format_startup_message,
 )
+
+UTC = timezone.utc
 
 
 def config(telegram: TelegramSettings | None = None) -> AppConfig:

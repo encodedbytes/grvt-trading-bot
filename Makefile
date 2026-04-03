@@ -1,6 +1,8 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
 PYTEST := .venv/bin/pytest
+RUFF := .venv/bin/ruff
+MYPY := .venv/bin/mypy
 BOT := .venv/bin/gravity-dca
 DASHBOARD := .venv/bin/gravity-dca-dashboard
 CONFIG ?= config.toml
@@ -13,7 +15,7 @@ IMAGE_DASHBOARD ?= $(IMAGE_DASHBOARD_REPO):$(IMAGE_TAG)
 CONTAINER ?= gravity-dca
 CONTAINER_DASHBOARD ?= gravity-dca-dashboard
 
-.PHONY: venv install test run once instrument position-config status thresholds recovery-status notify-test dashboard docker-build dashboard-docker-build docker-run docker-once docker-up docker-restart docker-logs docker-down dashboard-docker-run dashboard-docker-up dashboard-docker-logs dashboard-docker-down docker-image-info clean
+.PHONY: venv install test lint typecheck check run once instrument position-config status thresholds recovery-status notify-test dashboard docker-build dashboard-docker-build docker-run docker-once docker-up docker-restart docker-logs docker-down dashboard-docker-run dashboard-docker-up dashboard-docker-logs dashboard-docker-down docker-image-info clean
 
 venv:
 	python3 -m venv .venv
@@ -24,6 +26,14 @@ install: venv
 
 test:
 	$(PYTEST)
+
+lint:
+	$(RUFF) check src tests
+
+typecheck:
+	$(MYPY)
+
+check: lint typecheck test
 
 run:
 	$(BOT) --config $(CONFIG)

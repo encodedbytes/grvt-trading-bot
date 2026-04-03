@@ -1,4 +1,7 @@
 grvt-pysdk>=0.2.1
 
 [dev]
+mypy>=1.10.0
 pytest>=8.0.0
+ruff>=0.6.0
+types-requests>=2.32.0

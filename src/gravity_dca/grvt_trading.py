@@ -254,6 +254,10 @@ class GrvtTradingGateway:
                 f"leverage={effective_leverage}",
             ]
 
+        if desired_leverage is None:
+            raise ValueError(
+                f"Cannot set initial leverage for {symbol} because desired leverage is unknown"
+            )
         self._logger.info("Setting GRVT initial leverage for %s leverage=%s", symbol, leverage)
         self.set_initial_leverage(symbol, desired_leverage)
         return [f"leverage={desired_leverage}"]

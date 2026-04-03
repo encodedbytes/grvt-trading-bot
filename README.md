@@ -117,6 +117,19 @@ Run tests:
 make test
 ```
 
+Run the lightweight developer checks:
+
+```bash
+make lint
+make typecheck
+make check
+```
+
+What they do:
+- `make lint` runs Ruff against `src` and `tests`
+- `make typecheck` runs the current narrow mypy pass
+- `make check` runs lint, typecheck, and the full test suite
+
 Run the dashboard in Docker:
 
 ```bash
@@ -450,6 +463,9 @@ Local:
 - `make thresholds CONFIG=config.toml`
 - `make recovery-status CONFIG=config.toml`
 - `make notify-test CONFIG=config.toml`
+- `make lint`
+- `make typecheck`
+- `make check`
 - `make test`
 
 Docker:

@@ -6,6 +6,7 @@ import logging
 import requests
 
 from .config import AppConfig, TelegramSettings
+from .momentum_recovery import MomentumRecoveryDecision
 from .recovery import RecoveryDecision
 from .state import ActiveCycleState
 
@@ -133,7 +134,10 @@ def configured_order_type(config: AppConfig) -> str | None:
     return config.dca.order_type if config.dca is not None else None
 
 
-def format_recovery_message(symbol: str, decision: RecoveryDecision) -> str:
+def format_recovery_message(
+    symbol: str,
+    decision: RecoveryDecision | MomentumRecoveryDecision,
+) -> str:
     lines = [
         f"{symbol} recovery",
         f"decision={decision.action}",

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
-from decimal import Decimal
 import time
+from datetime import datetime, timezone
 
+from .bot_api import BotApiServer, build_shared_status
 from .config import AppConfig
 from .exchange import GrvtExchange
-from .grid_recovery import GridOpenOrderSnapshot, reconcile_grid_state
+from .grid_recovery import GridOpenOrderSnapshot, normalize_grid_open_orders, reconcile_grid_state
 from .grid_state import GridBotState, load_grid_state, save_grid_state
 from .grid_strategy import plan_grid_orders, seed_level_index
 from .strategy import OrderPlan, compute_amount_from_quote, entry_price, new_client_order_id
@@ -20,7 +20,6 @@ from .telegram import (
     format_startup_message,
 )
 
-
 UTC = timezone.utc
 
 
@@ -30,6 +29,7 @@ class GridBot:
             raise ValueError("Grid config is required for GridBot")
         self._config = config
         self._logger = logger
+        self._shared_status = build_shared_status(config, logger)
         self._exchange = GrvtExchange(
             config.credentials,
             logger,
@@ -102,8 +102,12 @@ class GridBot:
         last_error: Exception | None = None
 
         for attempt in range(1, attempts + 1):
-            open_orders = self._normalize_open_orders(
-                self._exchange.fetch_open_orders(symbol=self._settings.symbol)
+            instrument = self._exchange.get_instrument(self._settings.symbol)
+            open_orders = normalize_grid_open_orders(
+                self._exchange.fetch_open_orders(symbol=self._settings.symbol),
+                symbol=self._settings.symbol,
+                tick_size=instrument.tick_size,
+                round_price=self._exchange.round_price,
             )
             exchange_position = self._exchange.get_open_position(self._settings.symbol)
             fills = self._exchange.get_recent_fills(self._settings.symbol, limit=100)
@@ -136,70 +140,6 @@ class GridBot:
         if last_error is not None:
             raise last_error
         raise RuntimeError("Grid recovery failed without a captured exception")
-
-    def _normalize_open_orders(self, payloads: list[dict]) -> list[GridOpenOrderSnapshot]:
-        normalized: list[GridOpenOrderSnapshot] = []
-        instrument = self._exchange.get_instrument(self._settings.symbol)
-        for payload in payloads:
-            legs = payload.get("legs") or []
-            leg = legs[0] if isinstance(legs, list) and legs else None
-            if isinstance(leg, dict):
-                symbol = str(leg.get("instrument") or payload.get("symbol") or payload.get("instrument") or "")
-                side = "buy" if leg.get("is_buying_asset") else "sell"
-                price_value = leg.get("limit_price", payload.get("price"))
-                state = payload.get("state") or {}
-                book_size = state.get("book_size") if isinstance(state, dict) else None
-                size_value = (
-                    book_size[0]
-                    if isinstance(book_size, list) and book_size
-                    else book_size
-                )
-                if size_value in (None, "", "0", 0):
-                    size_value = leg.get("size", payload.get("amount", payload.get("size")))
-                client_order_id = (
-                    payload.get("metadata", {}).get("client_order_id")
-                    if isinstance(payload.get("metadata"), dict)
-                    else None
-                )
-                reduce_only = bool(payload.get("reduce_only", False))
-            else:
-                symbol = str(payload.get("symbol") or payload.get("instrument") or "")
-                side = str(payload.get("side", "")).strip().lower()
-                price_value = payload.get("price")
-                size_value = (
-                    payload.get("remaining")
-                    if payload.get("remaining") not in (None, "", "0", 0)
-                    else payload.get("amount", payload.get("size"))
-                )
-                client_order_id = (
-                    str(payload.get("clientOrderId") or payload.get("client_order_id"))
-                    if payload.get("clientOrderId") or payload.get("client_order_id")
-                    else None
-                )
-                reduce_only = bool(
-                    payload.get("reduceOnly")
-                    if payload.get("reduceOnly") is not None
-                    else payload.get("reduce_only", False)
-                )
-            if symbol != self._settings.symbol or side not in {"buy", "sell"}:
-                continue
-            if price_value in (None, "", "0", 0) or size_value in (None, "", "0", 0):
-                continue
-            normalized.append(
-                GridOpenOrderSnapshot(
-                    symbol=symbol,
-                    side=side,
-                    price=self._exchange.round_price(
-                        Decimal(str(price_value)),
-                        instrument.tick_size,
-                    ),
-                    size=Decimal(str(size_value)),
-                    order_id=str(payload["id"]) if payload.get("id") else None,
-                    client_order_id=str(client_order_id) if client_order_id else None,
-                    reduce_only=reduce_only,
-                )
-            )
-        return normalized
 
     def _build_order_plan(self, *, state: GridBotState, instrument, order) -> OrderPlan:
         order_price = self._exchange.round_price(order.price, instrument.tick_size)
@@ -495,6 +435,8 @@ class GridBot:
         return changed
 
     def run_once(self) -> bool:
+        started_at = datetime.now(tz=UTC).isoformat()
+        self._shared_status.mark_iteration_started(started_at)
         state = load_grid_state(self._settings.state_file)
         now = datetime.now(tz=UTC)
         self._maybe_notify_startup()
@@ -557,13 +499,19 @@ class GridBot:
         ) or changed
         if changed and not self._config.runtime.dry_run:
             self._persist_state(state)
+        self._shared_status.mark_iteration_succeeded(datetime.now(tz=UTC).isoformat())
         return changed
 
     def run_forever(self) -> None:
-        while True:
-            try:
-                self.run_once()
-            except Exception as exc:
-                self._logger.exception("Grid iteration failed")
-                self._notify_iteration_failure(exc)
-            time.sleep(self._config.runtime.poll_seconds)
+        with BotApiServer(self._shared_status, port=self._config.runtime.bot_api_port):
+            while True:
+                try:
+                    self.run_once()
+                except Exception as exc:
+                    self._shared_status.mark_iteration_failed(
+                        datetime.now(tz=UTC).isoformat(),
+                        exc,
+                    )
+                    self._logger.exception("Grid iteration failed")
+                    self._notify_iteration_failure(exc)
+                time.sleep(self._config.runtime.poll_seconds)
