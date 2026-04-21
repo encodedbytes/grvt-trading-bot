@@ -49,6 +49,8 @@ Before making changes or running the bot again, check:
 - Grid configs can optionally set `seed_enabled = true` to place one startup market buy on fresh grid initialization, then continue with the normal paired-sell lifecycle from that seeded inventory.
 - Grid configs can optionally set `reseed_when_flat = true` to place a fresh market seed after a completed round trip leaves the grid flat.
 - Grid open-buy placement is constrained by both `max_active_buy_orders` and the remaining `max_inventory_levels` capacity, so open buys plus inventory-bearing levels do not exceed `max_inventory_levels`.
+- Grid recovery now counts partial fills resting on still-open buy orders toward the live inventory check, so partial executions do not trigger false mismatch retries.
+- Grid recovery now treats the remaining size on a live reduce-only sell order as the source of truth for `sell_open` quantity when exchange fill snapshots lag.
 - If GRVT rejects exposure-increasing orders because the account is `risk-reduce-only`, the bot runtime status records that explicitly and the dashboard surfaces it.
 - When a bot has no active cycle and has reached `max_cycles`, it now sends a one-time inactive notification with reason `max-cycles-reached`.
 - Multiple bots on the same symbol and sub-account are unsafe.
