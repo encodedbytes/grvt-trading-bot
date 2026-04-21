@@ -30,6 +30,7 @@ Important behavior:
 - the momentum bot is long-only in this first version
 - on startup, DCA recovery first tries to rebuild the active cycle from live GRVT fill history for the configured symbol
 - momentum recovery reconciles local state with the live exchange position and recomputes ATR-backed stop metadata
+- grid recovery counts partial fills that are still resting on live open buy orders and uses the remaining live sell order size when fill snapshots lag
 - transient private-auth TLS/network failures are retried and can fall back to trusted local state for the current iteration
 - GRVT private auth now refreshes and synchronizes the SDK session cookie before private POST calls, and retries once on unauthenticated `401` responses or payloads
 - when a bot has no active cycle and has reached `max_cycles`, it sends a one-time inactive notification instead of silently going idle
@@ -228,6 +229,8 @@ For the grid bot:
 - a level currently reserved as the paired sell target for inventory is not eligible for a simultaneous buy order
 - grid limit prices are rounded down to the instrument tick size before submission
 - restart recovery rebuilds level state from live open orders, fills, and the live exchange position when the mapping is unambiguous
+- during grid recovery, partial quantity already filled on a still-open buy order is counted toward the live position check instead of being treated as a mismatch
+- during grid recovery, a live reduce-only sell order's remaining size becomes the source of truth for `sell_open` inventory quantity when fill snapshots lag behind the order book
 
 ## State
 
