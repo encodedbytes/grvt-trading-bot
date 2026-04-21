@@ -317,6 +317,13 @@ def _refresh_counts(recovered: GridBotState) -> None:
     )
 
 
+def _live_open_buy_partial_quantity(level: GridLevelState, fills: list[AccountFill]) -> Decimal:
+    fill = _matching_fill_aggregate(level, fills, side="buy")
+    if fill is None or fill.size <= 0:
+        return Decimal("0")
+    return fill.size
+
+
 def reconcile_grid_state(
     *,
     state: GridBotState,
@@ -429,6 +436,13 @@ def reconcile_grid_state(
                 )
                 changes.append(f"buy-filled:{level_index}")
                 level = recovered.level(level_index)
+            if level.entry_quantity is None:
+                raise ValueError(
+                    f"Open sell order has no tracked inventory quantity for level: level_index={level_index}"
+                )
+            if not within_tolerance(level.entry_quantity, order.size, QTY_TOLERANCE_RATIO):
+                changes.append(f"sell-quantity-synced:{level_index}")
+            level.entry_quantity = order.size
             level.status = "sell_open"
             level.exit_order_id = order.order_id
             level.exit_client_order_id = order.client_order_id
@@ -443,6 +457,14 @@ def reconcile_grid_state(
             level.entry_quantity if level.entry_quantity is not None else Decimal("0")
             for level in recovered.levels
             if level.status in {"filled_inventory", "sell_open"}
+        ),
+        Decimal("0"),
+    )
+    inventory_quantity += sum(
+        (
+            _live_open_buy_partial_quantity(level, fills)
+            for level in recovered.levels
+            if level.status == "buy_open"
         ),
         Decimal("0"),
     )

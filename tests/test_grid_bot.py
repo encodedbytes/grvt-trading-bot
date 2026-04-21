@@ -8,7 +8,7 @@ import pytest
 
 from gravity_dca.bot_api import build_shared_status
 from gravity_dca.config import load_config_text
-from gravity_dca.exchange import InstrumentMeta, MarketSnapshot, PositionSnapshot
+from gravity_dca.exchange import AccountFill, InstrumentMeta, MarketSnapshot, PositionSnapshot
 from gravity_dca.grid_bot import GridBot
 from gravity_dca.grid_recovery import reconcile_grid_state as real_reconcile_grid_state
 from gravity_dca.grid_state import GridBotState
@@ -235,6 +235,56 @@ def test_grid_bot_retries_transient_inventory_mismatch_during_recovery(monkeypat
 
     assert result is True
     assert calls["count"] == 2
+
+
+def test_grid_bot_accepts_partial_fill_on_live_open_buy_without_retry(monkeypatch, caplog) -> None:
+    bot = GridBot.__new__(GridBot)
+    bot._config = config(dry_run=True)
+    bot._logger = logging.getLogger("gravity_dca")
+    attach_shared_status(bot)
+    bot._exchange = FakeExchange(
+        market_price="2050",
+        open_orders=[
+            {
+                "symbol": "ETH_USDT_Perp",
+                "side": "buy",
+                "price": "1900",
+                "amount": "0.024",
+                "id": "0xbuy-1",
+                "clientOrderId": "buy-1",
+            }
+        ],
+        open_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.004"),
+            average_entry_price=Decimal("1900"),
+        ),
+        fills=[
+            AccountFill(
+                event_time=1,
+                symbol="ETH_USDT_Perp",
+                side="buy",
+                size=Decimal("0.004"),
+                price=Decimal("1900"),
+                order_id="0xbuy-1",
+                client_order_id="buy-1",
+            )
+        ],
+    )
+    bot._notifier = FakeNotifier()
+    bot._startup_notified = False
+    bot._last_iteration_error_key = None
+    bot._last_iteration_error_at = 0.0
+
+    monkeypatch.setattr("gravity_dca.grid_bot.load_grid_state", lambda path: GridBotState())
+    monkeypatch.setattr("gravity_dca.grid_bot.save_grid_state", lambda path, state: None)
+
+    with caplog.at_level(logging.WARNING):
+        result = bot.run_once()
+
+    assert result is True
+    assert "Grid recovery snapshot mismatch" not in caplog.text
 
 
 def test_grid_bot_persists_placed_buy_orders(monkeypatch) -> None:

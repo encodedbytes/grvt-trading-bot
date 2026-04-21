@@ -386,3 +386,125 @@ def test_reconcile_grid_state_aggregates_partial_buy_fills_for_reopened_level() 
     assert decision.recovered_state.level(1).status == "filled_inventory"
     assert decision.recovered_state.level(1).entry_quantity == Decimal("0.004")
     assert decision.recovered_state.level(1).entry_fill_price == Decimal("1900")
+
+
+def test_reconcile_grid_state_syncs_open_sell_quantity_to_remaining_order_size() -> None:
+    now = datetime(2026, 3, 23, tzinfo=UTC)
+    state = initialized_state()
+    state.mark_buy_filled(
+        level_index=1,
+        when=now,
+        fill_price=Decimal("1900"),
+        quantity=Decimal("0.028"),
+        order_id="0xentry-1",
+        client_order_id="buy-1",
+    )
+    state.open_sell_order(
+        level_index=1,
+        when=now,
+        order_id="0xsell-1",
+        client_order_id="sell-1",
+    )
+
+    decision = reconcile_grid_state(
+        state=state,
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="sell",
+                price=Decimal("2000"),
+                size=Decimal("0.024"),
+                order_id="0xsell-1",
+                client_order_id="sell-1",
+                reduce_only=True,
+            ),
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.024"),
+            average_entry_price=Decimal("1900"),
+        ),
+        fills=[],
+        when=now,
+    )
+
+    assert decision.recovered_state.level(1).status == "sell_open"
+    assert decision.recovered_state.level(1).entry_quantity == Decimal("0.024")
+
+
+def test_reconcile_grid_state_uses_open_sell_size_when_fill_snapshot_lags() -> None:
+    now = datetime(2026, 3, 23, tzinfo=UTC)
+
+    decision = reconcile_grid_state(
+        state=GridBotState(),
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="sell",
+                price=Decimal("2000"),
+                size=Decimal("0.028"),
+                order_id="0xsell-1",
+                client_order_id="sell-1",
+                reduce_only=True,
+            ),
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.028"),
+            average_entry_price=Decimal("1900"),
+        ),
+        fills=[
+            fill(
+                side="buy",
+                size="0.024",
+                price="1900",
+                order_id="0xbuy-1",
+                client_order_id="buy-1",
+            )
+        ],
+        when=now,
+    )
+
+    assert decision.recovered_state.level(1).status == "sell_open"
+    assert decision.recovered_state.level(1).entry_quantity == Decimal("0.028")
+
+
+def test_reconcile_grid_state_counts_partial_fill_on_live_open_buy() -> None:
+    now = datetime(2026, 3, 23, tzinfo=UTC)
+
+    decision = reconcile_grid_state(
+        state=GridBotState(),
+        settings=config(),
+        open_orders=[
+            GridOpenOrderSnapshot(
+                symbol="ETH_USDT_Perp",
+                side="buy",
+                price=Decimal("1900"),
+                size=Decimal("0.024"),
+                order_id="0xbuy-1",
+                client_order_id="buy-1",
+            )
+        ],
+        exchange_position=PositionSnapshot(
+            symbol="ETH_USDT_Perp",
+            side="buy",
+            size=Decimal("0.004"),
+            average_entry_price=Decimal("1900"),
+        ),
+        fills=[
+            fill(
+                side="buy",
+                size="0.004",
+                price="1900",
+                order_id="0xbuy-1",
+                client_order_id="buy-1",
+            )
+        ],
+        when=now,
+    )
+
+    assert decision.recovered_state.level(1).status == "buy_open"
